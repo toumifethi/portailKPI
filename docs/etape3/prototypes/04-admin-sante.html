@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Santé système — Portail KPI</title>
+  <link rel="stylesheet" href="_layout.css">
+  <script src="https://unpkg.com/react@17/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+const IMPORTS_STATUS = [
+  { client: 'Client A', lastImport: '15/01 – 02h14', duration: '3min 42s', issues: 234,  status: 'ok',      errors: 0,  next: '16/01 02h' },
+  { client: 'Client B', lastImport: '15/01 – 02h08', duration: '4min 12s', issues: 189,  status: 'warning', errors: 14, next: '16/01 02h' },
+  { client: 'Client C', lastImport: '13/01 – 02h05', duration: '—',        issues: 0,    status: 'error',   errors: 1,  next: 'Manuel' },
+  { client: 'Client D', lastImport: '15/01 – 02h22', duration: '2min 01s', issues: 67,   status: 'ok',      errors: 0,  next: '16/01 02h' },
+  { client: 'Client E', lastImport: '15/01 – 02h31', duration: '1min 55s', issues: 43,   status: 'ok',      errors: 0,  next: '16/01 02h' },
+];
+
+const NO_SAISIE = [
+  { name: 'Paul RICHARD',  team: 'ALPHA', client: 'Client A', days: 5 },
+  { name: 'Tom DUPUIS',    team: 'BETA',  client: 'Client A', days: 4 },
+  { name: 'Nina MOREAU',   team: 'GAMMA', client: 'Client C', days: 7 },
+  { name: 'Alex FONTAINE', team: 'DELTA', client: 'Client B', days: 3 },
+];
+
+const KPI_OBSOLETE = [
+  { client: 'Client A', kpi: 'Respect des charges', reason: 'Configuration modifiée le 14/01' },
+];
+
+function Sidebar() {
+  return (
+    <div className="sidebar">
+      <div className="sidebar-logo">
+        <span className="logo-icon">📊</span>
+        <div><div className="logo-text">Portail KPI</div><div className="logo-sub">DECADE</div></div>
+      </div>
+      <div className="nav-section">Navigation</div>
+      <a href="02-dashboard.html" className="nav-item"><span className="nav-icon">🏠</span> Tableau de bord</a>
+      <a href="02-dashboard.html" className="nav-item"><span className="nav-icon">👤</span> Mes KPI</a>
+      <a href="03-equipe-heatmap.html" className="nav-item"><span className="nav-icon">👥</span> Mon équipe</a>
+      <a href="#" className="nav-item"><span className="nav-icon">🏢</span> Vue clients</a>
+      <div className="nav-section">Administration</div>
+      <a href="04-admin-sante.html" className="nav-item active"><span className="nav-icon">🩺</span> Santé système</a>
+      <a href="05-admin-imports.html" className="nav-item"><span className="nav-icon">📥</span> Imports</a>
+      <a href="06-admin-utilisateurs.html" className="nav-item"><span className="nav-icon">🔑</span> Utilisateurs</a>
+      <a href="07-admin-client-config.html" className="nav-item"><span className="nav-icon">⚙️</span> Config. Clients</a>
+      <a href="08-admin-kpi-config.html" className="nav-item"><span className="nav-icon">📐</span> Config. KPI</a>
+      <div className="sidebar-footer">
+        <div className="user-name">Admin DECADE</div><div>Administrateur</div>
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({ status }) {
+  if (status === 'ok')      return <span className="badge badge-green">✅ OK</span>;
+  if (status === 'warning') return <span className="badge badge-orange">⚠️ Avertissements</span>;
+  if (status === 'error')   return <span className="badge badge-red">❌ Échec</span>;
+  return null;
+}
+
+function HealthPage() {
+  const [showNoSaisie, setShowNoSaisie] = React.useState(false);
+  const [actionModal, setActionModal]   = React.useState(null);
+
+  const okCount      = IMPORTS_STATUS.filter(i => i.status === 'ok').length;
+  const warnCount    = IMPORTS_STATUS.filter(i => i.status === 'warning').length;
+  const errorCount   = IMPORTS_STATUS.filter(i => i.status === 'error').length;
+
+  return (
+    <div style={{display:'flex'}}>
+      <Sidebar />
+      <div style={{flex:1}}>
+        <div className="header">
+          <div className="breadcrumb">
+            <a href="#">Administration</a><span className="sep">/</span>
+            <span className="current">Santé système</span>
+          </div>
+          <div className="header-right">
+            <span className="sync-info">⏱ Actualisé à 14:32</span>
+            <button className="bell-btn">🔔 <span className="bell-badge">2</span></button>
+            <div className="user-avatar" style={{background:'linear-gradient(135deg,#ff4d4f,#fa8c16)'}}>AD</div>
+            <span className="user-name-header">Admin ▾</span>
+          </div>
+        </div>
+
+        <div className="content">
+          <div className="page-title">🩺 Santé système</div>
+          <div className="page-subtitle">Vue globale des imports et des alertes actives</div>
+
+          {/* Métriques résumé */}
+          <div className="stats-grid">
+            <div className="stat-card">
+              <div className="stat-value rag-green">{okCount}</div>
+              <div className="stat-label">Clients OK</div>
+              <div className="stat-sub" style={{color:'#52c41a'}}>Imports récents réussis</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value rag-orange">{warnCount}</div>
+              <div className="stat-label">Avertissements</div>
+              <div className="stat-sub" style={{color:'#fa8c16'}}>Erreurs non bloquantes</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value rag-red">{errorCount}</div>
+              <div className="stat-label">Erreurs critiques</div>
+              <div className="stat-sub" style={{color:'#ff4d4f'}}>Action requise</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value" style={{color:'#fa8c16'}}>{NO_SAISIE.length}</div>
+              <div className="stat-label">Sans saisie &gt; 3j</div>
+              <div className="stat-sub" style={{color:'#fa8c16'}}>Collaborateurs à relancer</div>
+            </div>
+          </div>
+
+          {/* Alertes actives */}
+          <div className="section-card">
+            <div className="section-header">
+              <span className="section-header-title">🚨 Alertes actives ({errorCount + warnCount})</span>
+            </div>
+
+            <div className="alert-banner error">
+              <span className="alert-icon">❌</span>
+              <div>
+                <strong>Client C — Token JIRA invalide (401)</strong><br/>
+                <span style={{fontSize:12, color:'#595959'}}>Dernier import échoué le 13/01 à 02h05. Les imports sont suspendus.</span>
+              </div>
+              <button className="alert-action" onClick={() => window.location.href='07-admin-client-config.html'}>
+                Corriger →
+              </button>
+            </div>
+
+            <div className="alert-banner warning">
+              <span className="alert-icon">⚠️</span>
+              <div>
+                <strong>Client B — 14 tickets sans estimation</strong><br/>
+                <span style={{fontSize:12, color:'#595959'}}>Import du 15/01. Ces tickets sont exclus du calcul du KPI "Respect des charges".</span>
+              </div>
+              <button className="alert-action" onClick={() => window.location.href='05-admin-imports.html'}>
+                Voir le détail →
+              </button>
+            </div>
+
+            {KPI_OBSOLETE.length > 0 && (
+              <div className="alert-banner" style={{background:'#e6f4ff', border:'1px solid #91caff'}}>
+                <span className="alert-icon">🔄</span>
+                <div>
+                  <strong>Client A — KPI "Respect des charges" obsolète</strong><br/>
+                  <span style={{fontSize:12, color:'#595959'}}>{KPI_OBSOLETE[0].reason}. Les résultats seront recalculés au prochain import.</span>
+                </div>
+                <button className="alert-action">Forcer recalcul →</button>
+              </div>
+            )}
+          </div>
+
+          {/* Tableau imports */}
+          <div className="section-card">
+            <div className="section-header">
+              <span className="section-header-title">📥 État des imports par client</span>
+              <div style={{display:'flex', gap:8}}>
+                <button className="btn btn-primary btn-sm" onClick={() => window.location.href='05-admin-imports.html'}>
+                  ▶ Déclencher un import
+                </button>
+                <button className="btn btn-default btn-sm" onClick={() => window.location.href='05-admin-imports.html'}>
+                  Voir l'historique →
+                </button>
+              </div>
+            </div>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Client</th>
+                  <th>Dernier import</th>
+                  <th>Durée</th>
+                  <th style={{textAlign:'center'}}>Issues</th>
+                  <th>Statut</th>
+                  <th>Prochain</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {IMPORTS_STATUS.map((row, i) => (
+                  <tr key={i} style={row.status === 'error' ? {background:'#fff2f0'} : row.status === 'warning' ? {background:'#fffbe6'} : {}}>
+                    <td style={{fontWeight:500}}>{row.client}</td>
+                    <td style={{fontSize:12, color:'#595959'}}>{row.lastImport}</td>
+                    <td style={{fontSize:12}}>{row.duration}</td>
+                    <td style={{textAlign:'center'}}>{row.issues > 0 ? row.issues : '—'}</td>
+                    <td>
+                      <StatusBadge status={row.status} />
+                      {row.errors > 0 && <span style={{fontSize:11, color:'#fa8c16', marginLeft:6}}>({row.errors} err.)</span>}
+                    </td>
+                    <td style={{fontSize:12, color:'#8c8c8c'}}>{row.next}</td>
+                    <td>
+                      {row.status === 'error'
+                        ? <button className="btn btn-default btn-sm" style={{color:'#1677ff'}}>↺ Relancer</button>
+                        : <button className="btn btn-default btn-sm">▶ Forcer</button>
+                      }
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Sans saisie */}
+          <div className="section-card">
+            <div className="section-header">
+              <span className="section-header-title">
+                ⚠️ Collaborateurs sans saisie {'>'} 3 jours ({NO_SAISIE.length})
+              </span>
+              <button className="btn btn-default btn-sm" onClick={() => setShowNoSaisie(!showNoSaisie)}>
+                {showNoSaisie ? '▲ Masquer' : '▼ Afficher la liste'}
+              </button>
+            </div>
+            {showNoSaisie && (
+              <table className="data-table">
+                <thead>
+                  <tr><th>Collaborateur</th><th>Équipe</th><th>Client</th><th>Jours sans saisie</th></tr>
+                </thead>
+                <tbody>
+                  {NO_SAISIE.map((u, i) => (
+                    <tr key={i}>
+                      <td style={{fontWeight:500}}>{u.name}</td>
+                      <td><span className="badge badge-blue">{u.team}</span></td>
+                      <td>{u.client}</td>
+                      <td>
+                        <span className={`badge ${u.days >= 7 ? 'badge-red' : u.days >= 5 ? 'badge-orange' : 'badge-gray'}`}>
+                          {u.days} jours
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.render(<HealthPage />, document.getElementById('root'));
+</script>
+</body>
+</html>

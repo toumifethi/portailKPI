@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prototypes — Portail KPI</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Inter, -apple-system, sans-serif; background: #f5f5f5; padding: 40px 24px; }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { font-size: 24px; font-weight: 700; color: #1677ff; margin-bottom: 4px; }
+    .subtitle { font-size: 14px; color: #8c8c8c; margin-bottom: 32px; }
+    .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #8c8c8c; margin-bottom: 12px; margin-top: 28px; }
+    .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+    .screen-card {
+      background: #fff; border-radius: 10px; border: 1px solid #e8e8e8;
+      padding: 16px 20px; text-decoration: none; display: flex; align-items: center; gap: 16px;
+      transition: all 0.15s; cursor: pointer;
+    }
+    .screen-card:hover { border-color: #1677ff; box-shadow: 0 4px 16px rgba(22,119,255,0.12); transform: translateY(-1px); }
+    .screen-icon { font-size: 28px; flex-shrink: 0; }
+    .screen-title { font-size: 14px; font-weight: 600; color: #141414; margin-bottom: 2px; }
+    .screen-desc  { font-size: 12px; color: #8c8c8c; line-height: 1.4; }
+    .role-badge {
+      display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 10px; font-weight: 600;
+      margin-top: 6px;
+    }
+    .role-all    { background: #f0f5ff; color: #1d4edd; }
+    .role-cp     { background: #f6ffed; color: #237804; }
+    .role-dm     { background: #fff7e6; color: #d46b08; }
+    .role-admin  { background: #fff1f0; color: #cf1322; }
+    .tip { background: #e6f4ff; border: 1px solid #91caff; border-radius: 8px; padding: 12px 16px; margin-bottom: 24px; font-size: 13px; color: #0958d9; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+      <span style="font-size:36px;">📊</span>
+      <div>
+        <h1>Portail KPI — Prototypes UI</h1>
+        <p class="subtitle" style="margin:0;">Étape 3 — Maquettes interactives · DECADE · 2026 · v1.2</p>
+      </div>
+    </div>
+
+    <div class="tip">
+      💡 <strong>Comment utiliser ces prototypes :</strong> Ouvrez chaque fichier HTML directement dans votre navigateur (Chrome recommandé).
+      Les prototypes sont entièrement navigables entre eux. Toutes les interactions (modales, filtres, graphiques) sont fonctionnelles.
+    </div>
+
+    <div class="section-title">🟢 Écrans utilisateur</div>
+    <div class="card-grid">
+      <a href="01-connexion.html" class="screen-card">
+        <span class="screen-icon">🔐</span>
+        <div>
+          <div class="screen-title">01 — Connexion</div>
+          <div class="screen-desc">Page de connexion SSO Microsoft 365 avec gestion des erreurs d'accès.</div>
+          <span class="role-badge role-all">Tous les rôles</span>
+        </div>
+      </a>
+      <a href="02-dashboard.html" class="screen-card">
+        <span class="screen-icon">📊</span>
+        <div>
+          <div class="screen-title">02 — Dashboard & Mes KPI</div>
+          <div class="screen-desc">KPI cards par client, graphique d'évolution, drill-down tickets avec export.</div>
+          <span class="role-badge role-all">Tous les rôles</span>
+        </div>
+      </a>
+      <a href="03-equipe-heatmap.html" class="screen-card">
+        <span class="screen-icon">👥</span>
+        <div>
+          <div class="screen-title">03 — Équipe & Heatmap</div>
+          <div class="screen-desc">Tableau équipe, heatmap collaborateur × mois, graphique d'évolution multi-courbes.</div>
+          <span class="role-badge role-cp">Chef de projet</span>
+          <span class="role-badge role-dm" style="margin-left:4px;">Delivery Manager</span>
+        </div>
+      </a>
+    </div>
+
+    <div class="section-title">🔴 Écrans d'administration</div>
+    <div class="card-grid">
+      <a href="04-admin-sante.html" class="screen-card">
+        <span class="screen-icon">🩺</span>
+        <div>
+          <div class="screen-title">04 — Santé système</div>
+          <div class="screen-desc">Alertes actives, état des imports par client, collaborateurs sans saisie.</div>
+          <span class="role-badge role-admin">Admin uniquement</span>
+        </div>
+      </a>
+      <a href="05-admin-imports.html" class="screen-card">
+        <span class="screen-icon">📥</span>
+        <div>
+          <div class="screen-title">05 — Suivi des imports</div>
+          <div class="screen-desc">Historique des imports, déclenchement manuel/backfill, détail des erreurs.</div>
+          <span class="role-badge role-admin">Admin uniquement</span>
+        </div>
+      </a>
+    </div>
+
+    <div class="section-title">🔴 Écrans d'administration (suite)</div>
+    <div class="card-grid">
+      <a href="06-admin-utilisateurs.html" class="screen-card">
+        <span class="screen-icon">🔑</span>
+        <div>
+          <div class="screen-title">06 — Gestion des utilisateurs</div>
+          <div class="screen-desc">Liste, filtres, fiche, modification de rôle, archivage avec motif.</div>
+          <span class="role-badge role-admin">Admin uniquement</span>
+        </div>
+      </a>
+      <a href="07-admin-client-config.html" class="screen-card">
+        <span class="screen-icon">⚙️</span>
+        <div>
+          <div class="screen-title">07 — Config. Client JIRA</div>
+          <div class="screen-desc">Connexion (test live), mapping champs, projets, planification, archivage client.</div>
+          <span class="role-badge role-admin">Admin uniquement</span>
+        </div>
+      </a>
+      <a href="08-admin-kpi-config.html" class="screen-card">
+        <span class="screen-icon">📐</span>
+        <div>
+          <div class="screen-title">08 — Config. KPI</div>
+          <div class="screen-desc">Catalogue KPI, formules prédéfinies / JQL / SQL, seuils, règles IA par valeur.</div>
+          <span class="role-badge role-admin">Admin uniquement</span>
+        </div>
+      </a>
+    </div>
+
+    <div class="section-title">🌐 Vue transversale</div>
+    <div class="card-grid">
+      <a href="09-vue-cross-client.html" class="screen-card">
+        <span class="screen-icon">🌐</span>
+        <div>
+          <div class="screen-title">09 — Évolution KPI cross-client</div>
+          <div class="screen-desc">Graphique multi-courbes, filtres d'exclusion (statuts, collaborateurs, types), vues sauvegardées.</div>
+          <span class="role-badge role-admin">Admin</span>
+          <span class="role-badge role-dm" style="margin-left:4px;">Delivery Manager</span>
+        </div>
+      </a>
+    </div>
+
+    <div style="margin-top:32px; padding-top:20px; border-top:1px solid #e8e8e8; font-size:12px; color:#bfbfbf; text-align:center;">
+      Portail KPI Productivité — DECADE · Étape 3 UX · Version 1.2 · 2026-03-15 · 9 prototypes
+    </div>
+  </div>
+</body>
+</html>

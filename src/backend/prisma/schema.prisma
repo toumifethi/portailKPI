@@ -1,0 +1,769 @@
+// ============================================================
+// Prisma Schema — Portail KPI Productivité
+// Version : 2.0 — Collaborateurs + JiraUsers
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// Domaine : Collaborateurs & Droits
+// ============================================================
+
+enum CollaboratorStatus {
+  ACTIF
+  INACTIF
+  EXCLU
+}
+
+model Profile {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique @db.VarChar(50)
+  label       String   @db.VarChar(100)
+  description String?  @db.VarChar(500)
+  level       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  collaborators        Collaborator[]
+  kpiDefinitionTargets KpiDefinitionProfile[]
+
+  @@map("profiles")
+}
+
+model Collaborator {
+  id          Int                @id @default(autoincrement())
+  email       String             @unique @db.VarChar(255)
+  firstName   String             @db.VarChar(100)
+  lastName    String             @db.VarChar(100)
+  profileId   Int
+  status      CollaboratorStatus @default(ACTIF)
+  azureAdOid  String?            @unique @db.VarChar(100)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  profile            Profile               @relation(fields: [profileId], references: [id])
+  jiraUsers          JiraUser[]
+  scopes             CollaboratorScope[]
+  kpiResults         KpiResult[]
+  savedViews         SavedView[]
+  kpiFormulaVersions KpiFormulaVersion[]
+  archivedClients    Client[]              @relation("ClientArchivedBy")
+  auditLogs          AuditLog[]
+
+  @@map("collaborators")
+}
+
+enum ScopeType {
+  CLIENT
+  PROJECT
+}
+
+model CollaboratorScope {
+  id             Int       @id @default(autoincrement())
+  collaboratorId Int
+  scopeType      ScopeType
+  scopeId        Int
+
+  collaborator Collaborator @relation(fields: [collaboratorId], references: [id], onDelete: Cascade)
+
+  @@map("collaborator_scopes")
+}
+
+// ============================================================
+// Domaine : Utilisateurs JIRA (comptes importés)
+// ============================================================
+
+model JiraUser {
+  id               Int      @id @default(autoincrement())
+  jiraAccountId    String   @db.VarChar(100)
+  jiraConnectionId Int
+  displayName      String   @db.VarChar(200)
+  emailAddress     String?  @db.VarChar(255)
+  isActive         Boolean  @default(true)
+  collaboratorId   Int?
+  importedAt       DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  jiraConnection JiraConnection @relation(fields: [jiraConnectionId], references: [id], onDelete: Cascade)
+  collaborator   Collaborator?  @relation(fields: [collaboratorId], references: [id], onDelete: SetNull)
+
+  @@unique([jiraAccountId, jiraConnectionId])
+  @@index([collaboratorId])
+  @@map("jira_users")
+}
+
+// ============================================================
+// Domaine : Connexions JIRA & Clients
+// ============================================================
+
+model JiraConnection {
+  id            Int      @id @default(autoincrement())
+  name          String   @db.VarChar(200)
+  jiraUrl       String   @db.VarChar(500)
+  jiraEmail     String   @db.VarChar(255)
+  jiraApiToken  String   @db.VarChar(500)
+  tempoApiToken String?  @db.VarChar(500)
+  fieldMapping  Json?    // { storyPoints?: string, sprints?: string, ... }
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  clients          Client[]
+  jiraUsers        JiraUser[]
+  jiraCustomFields JiraCustomField[]
+
+  @@map("jira_connections")
+}
+
+// ============================================================
+// Domaine : Champs custom JIRA (métadonnées + options)
+// ============================================================
+
+model JiraCustomField {
+  id               Int      @id @default(autoincrement())
+  jiraFieldId      String   @db.VarChar(100)
+  jiraConnectionId Int
+  name             String   @db.VarChar(200)
+  fieldType        String   @db.VarChar(100)
+  schemaType       String?  @db.VarChar(200)
+  isActive         Boolean  @default(true)
+  lastSyncAt       DateTime @default(now())
+  createdAt        DateTime @default(now())
+
+  jiraConnection JiraConnection          @relation(fields: [jiraConnectionId], references: [id], onDelete: Cascade)
+  options        JiraCustomFieldOption[]
+
+  @@unique([jiraFieldId, jiraConnectionId])
+  @@map("jira_custom_fields")
+}
+
+model JiraCustomFieldOption {
+  id             Int     @id @default(autoincrement())
+  customFieldId  Int
+  jiraOptionId   String  @db.VarChar(100)
+  value          String  @db.VarChar(500)
+  isActive       Boolean @default(true)
+  position       Int     @default(0)
+
+  customField JiraCustomField @relation(fields: [customFieldId], references: [id], onDelete: Cascade)
+
+  @@unique([customFieldId, jiraOptionId])
+  @@map("jira_custom_field_options")
+}
+
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum GroupingType {
+  EPIC
+  COMPONENT
+  LABEL
+  FIX_VERSION
+  CUSTOM_FIELD
+}
+
+model Client {
+  id                   Int          @id @default(autoincrement())
+  name                 String       @db.VarChar(200)
+  jiraConnectionId     Int?
+  extraJiraFields      Json?
+  groupingType              GroupingType @default(EPIC)
+  returnInternalIssueTypes  Json?       // array of issue type names for internal returns (e.g. ["Retour intégration", "Recette"])
+  returnClientIssueTypes    Json?       // array of issue type names for client returns (e.g. ["Retour", "Retour client"])
+  groupingFieldId           String?     @db.VarChar(100)
+  groupingCpFieldId    String?      @db.VarChar(100)
+  spToHoursRatio       Decimal?     @db.Decimal(5, 2)
+  importTransitions    Boolean      @default(false)
+  status               ClientStatus @default(ACTIVE)
+  archivedAt           DateTime?
+  archivedByCollaboratorId Int?
+  archiveReason        String?      @db.VarChar(500)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  jiraConnection   JiraConnection?   @relation(fields: [jiraConnectionId], references: [id], onDelete: SetNull)
+  archivedBy       Collaborator?     @relation("ClientArchivedBy", fields: [archivedByCollaboratorId], references: [id], onDelete: SetNull)
+  projects         Project[]
+  kpiClientConfigs KpiClientConfig[]
+  importJobs       ImportJob[]
+  importSchedules    ImportSchedule[]
+  kpiCalcSchedules   KpiCalcSchedule[] @relation("KpiCalcScheduleClient")
+  jobLogs            JobLog[]
+
+  @@map("clients")
+}
+
+enum ProjectType {
+  CLASSIC
+  NEXT_GEN
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+model Project {
+  id              Int           @id @default(autoincrement())
+  clientId        Int
+  jiraProjectKey  String        @db.VarChar(50)
+  jiraProjectName String        @db.VarChar(200)
+  jiraProjectType ProjectType
+  status          ProjectStatus @default(ACTIVE)
+  importFromDate  DateTime?
+  lastSyncAt      DateTime?
+  createdAt       DateTime      @default(now())
+
+  client           Client           @relation(fields: [clientId], references: [id])
+  issues           Issue[]
+  groupingEntities GroupingEntity[]
+  kpiResults       KpiResult[]
+
+  @@unique([clientId, jiraProjectKey])
+  @@map("projects")
+}
+
+// ============================================================
+// Domaine : Données JIRA
+// ============================================================
+
+enum EntityType {
+  EPIC
+  SPRINT
+  COMPONENT
+  LABEL
+  FIX_VERSION
+  CUSTOM_FIELD
+}
+
+enum EntityStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+model GroupingEntity {
+  id          Int          @id @default(autoincrement())
+  clientId    Int
+  projectId   Int?
+  jiraId      String       @db.VarChar(100)
+  name        String       @db.VarChar(500)
+  entityType  EntityType
+  ownerUserId Int?
+  status      EntityStatus @default(ACTIVE)
+  // Sprint dates (renseigné pour entityType = EPIC ou sprints)
+  startDate   DateTime?
+  endDate     DateTime?
+  state       String?      @db.VarChar(50)
+  importedAt  DateTime     @default(now())
+
+  project      Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  kpiResults   KpiResult[]
+  issueSprints IssueSprint[]
+
+  @@unique([clientId, jiraId, entityType])
+  @@map("grouping_entities")
+}
+
+model IssueSprint {
+  id               Int @id @default(autoincrement())
+  issueId          Int
+  groupingEntityId Int
+
+  issue          Issue          @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  groupingEntity GroupingEntity @relation(fields: [groupingEntityId], references: [id], onDelete: Cascade)
+
+  @@unique([issueId, groupingEntityId])
+  @@index([groupingEntityId])
+  @@map("issue_sprints")
+}
+
+model IssueTransition {
+  id         Int      @id @default(autoincrement())
+  issueId    Int
+  fromStatus String?  @db.VarChar(100)
+  toStatus   String   @db.VarChar(100)
+  changedAt  DateTime
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@index([issueId, changedAt])
+  @@index([toStatus, changedAt])
+  @@map("issue_transitions")
+}
+
+model Issue {
+  id                     Int      @id @default(autoincrement())
+  clientId               Int
+  projectId              Int
+  jiraId                 String   @db.VarChar(100)
+  jiraKey                String   @db.VarChar(50)
+  summary                String   @db.VarChar(1000)
+  issueType              String   @db.VarChar(100)
+  status                 String   @db.VarChar(100)
+  assigneeJiraAccountId  String?  @db.VarChar(100)
+  reporterJiraAccountId  String?  @db.VarChar(100)
+  parentJiraId           String?  @db.VarChar(100)
+  groupingEntityId       Int?
+  originalEstimateSeconds Int?
+  originalEstimateHours  Decimal? @db.Decimal(10, 4)
+  timeSpentSeconds       Int?
+  remainingEstimateSeconds Int?
+  // Rollups incluant sous-tâches
+  rollupRemainingSeconds Int?
+  rollupRemainingHours   Decimal? @db.Decimal(10, 4)
+  storyPoints            Decimal? @db.Decimal(10, 2)
+  jiraCreatedAt          DateTime
+  jiraUpdatedAt          DateTime
+  resolvedAt             DateTime?
+  rollupEstimateSeconds  Int?
+  rollupEstimateHours    Decimal? @db.Decimal(10, 4)
+  rollupTimeSpentSeconds Int?
+  rollupTimeSpentHours   Decimal? @db.Decimal(10, 4)
+  customFields           Json?
+  importedAt             DateTime @default(now())
+
+  project     Project     @relation(fields: [projectId], references: [id])
+  worklogs       Worklog[]
+  sourceLinks    IssueLink[]       @relation("SourceIssue")
+  targetLinks    IssueLink[]       @relation("TargetIssue")
+  issueSprints   IssueSprint[]
+  transitions    IssueTransition[]
+
+  @@unique([clientId, jiraId])
+  @@index([projectId])
+  @@index([assigneeJiraAccountId])
+  @@index([status])
+  @@index([issueType])
+  @@index([jiraUpdatedAt])
+  @@map("issues")
+}
+
+model IssueLink {
+  id            Int      @id @default(autoincrement())
+  jiraLinkId    String   @db.VarChar(100)
+  sourceIssueId Int
+  targetIssueId Int
+  linkType      String   @db.VarChar(100)
+  createdAt     DateTime @default(now())
+
+  sourceIssue Issue @relation("SourceIssue", fields: [sourceIssueId], references: [id], onDelete: Cascade)
+  targetIssue Issue @relation("TargetIssue", fields: [targetIssueId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceIssueId, jiraLinkId])
+  @@index([targetIssueId])
+  @@map("issue_links")
+}
+
+enum WorklogSource {
+  JIRA
+  TEMPO
+}
+
+model Worklog {
+  id                  Int           @id @default(autoincrement())
+  issueId             Int
+  authorJiraAccountId String        @db.VarChar(100)
+  timeSpentSeconds    Int
+  startedAt           DateTime
+  source              WorklogSource
+  jiraWorklogId       String?       @db.VarChar(100)
+  tempoWorklogId      String?       @db.VarChar(100)
+  importedAt          DateTime      @default(now())
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@unique([issueId, jiraWorklogId])
+  @@unique([issueId, tempoWorklogId])
+  @@index([authorJiraAccountId])
+  @@index([startedAt])
+  @@map("worklogs")
+}
+
+// ============================================================
+// Domaine : KPI
+// ============================================================
+
+enum FormulaType {
+  PREDEFINED
+  FORMULA_AST
+  JQL
+  SQL
+}
+
+model KpiDefinition {
+  id             Int         @id @default(autoincrement())
+  name           String      @db.VarChar(200)
+  description    String?     @db.Text
+  unit           String?     @db.VarChar(50)
+  formulaType    FormulaType
+  predefinedType String?     @db.VarChar(100)
+  baseConfig     Json
+  configSchema   Json?
+  // AST JSON de la formule guidée (type FORMULA_AST)
+  formulaAst     Json?
+  // Seuils RAG par défaut — copiés dans kpi_client_configs à l'assignation
+  defaultThresholdRedMin    Decimal? @db.Decimal(8, 2)
+  defaultThresholdRedMax    Decimal? @db.Decimal(8, 2)
+  defaultThresholdOrangeMin Decimal? @db.Decimal(8, 2)
+  defaultThresholdOrangeMax Decimal? @db.Decimal(8, 2)
+  defaultThresholdGreenMin  Decimal? @db.Decimal(8, 2)
+  defaultThresholdGreenMax  Decimal? @db.Decimal(8, 2)
+  isSystem       Boolean     @default(false)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  kpiClientConfigs KpiClientConfig[]
+  savedViews       SavedView[]
+  targetProfiles   KpiDefinitionProfile[]
+  calcSchedules    KpiCalcSchedule[]
+  jobLogs          JobLog[]          @relation("JobLogKpi")
+
+  @@map("kpi_definitions")
+}
+
+model KpiDefinitionProfile {
+  id              Int @id @default(autoincrement())
+  kpiDefinitionId Int
+  profileId       Int
+
+  kpiDefinition KpiDefinition @relation(fields: [kpiDefinitionId], references: [id], onDelete: Cascade)
+  profile       Profile       @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([kpiDefinitionId, profileId])
+  @@map("kpi_definition_profiles")
+}
+
+model KpiClientConfig {
+  id                   Int      @id @default(autoincrement())
+  kpiDefinitionId      Int
+  clientId             Int
+  isActive             Boolean  @default(true)
+  configOverride       Json     @default("{}")
+  formulaOverride      String?  @db.Text
+  // Surcharge AST de la formule pour ce client (null = utilise la formule globale)
+  formulaAstOverride   Json?
+  formulaVersion       String   @default("1.0") @db.VarChar(20)
+  debugMode            Boolean  @default(false)
+  debugCollaboratorId  Int?     // null = global uniquement, sinon = global + ce collaborateur
+  thresholdRedMin      Decimal? @db.Decimal(8, 2)
+  thresholdRedMax      Decimal? @db.Decimal(8, 2)
+  thresholdOrangeMin   Decimal? @db.Decimal(8, 2)
+  thresholdOrangeMax   Decimal? @db.Decimal(8, 2)
+  thresholdGreenMin    Decimal? @db.Decimal(8, 2)
+  thresholdGreenMax    Decimal? @db.Decimal(8, 2)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  kpiDefinition   KpiDefinition      @relation(fields: [kpiDefinitionId], references: [id])
+  client          Client             @relation(fields: [clientId], references: [id])
+  kpiResults      KpiResult[]
+  aiFieldRules    KpiAiFieldRule[]
+  formulaVersions KpiFormulaVersion[]
+  debugTraces     KpiDebugTrace[]
+
+  @@unique([kpiDefinitionId, clientId])
+  @@map("kpi_client_configs")
+}
+
+enum PeriodType {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+model KpiResult {
+  id                  Int        @id @default(autoincrement())
+  kpiClientConfigId   Int
+  collaboratorId      Int?
+  projectId           Int?
+  groupingEntityId    Int?
+  periodType          PeriodType
+  periodStart         DateTime   @db.Date
+  periodEnd           DateTime   @db.Date
+  value               Decimal?   @db.Decimal(18, 4)
+  ticketCount         Int        @default(0)
+  excludedTicketCount Int        @default(0)
+  formulaVersion      String     @default("1.0") @db.VarChar(20)
+  isObsolete          Boolean    @default(false)
+  computedAt          DateTime   @default(now())
+
+  kpiClientConfig KpiClientConfig  @relation(fields: [kpiClientConfigId], references: [id])
+  collaborator    Collaborator?    @relation(fields: [collaboratorId], references: [id], onDelete: Cascade)
+  project         Project?         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  groupingEntity  GroupingEntity?  @relation(fields: [groupingEntityId], references: [id], onDelete: SetNull)
+
+  @@unique([kpiClientConfigId, collaboratorId, periodType, periodStart], name: "kpi_result_unique")
+  @@index([kpiClientConfigId, projectId, periodStart])
+  @@map("kpi_results")
+}
+
+enum AiRule {
+  COMPTE_COMME_IA
+  NON_IA
+  EXCLUT
+}
+
+model KpiAiFieldRule {
+  id                Int             @id @default(autoincrement())
+  kpiClientConfigId Int
+  fieldValue        String?         @db.VarChar(255)
+  rule              AiRule          @default(NON_IA)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  kpiClientConfig KpiClientConfig @relation(fields: [kpiClientConfigId], references: [id], onDelete: Cascade)
+
+  @@unique([kpiClientConfigId, fieldValue])
+  @@map("kpi_ai_field_rules")
+}
+
+enum FormulaChangeType {
+  CONFIG_OVERRIDE
+  FORMULA_OVERRIDE
+  CODE_UPDATE
+}
+
+model KpiFormulaVersion {
+  id                Int               @id @default(autoincrement())
+  kpiClientConfigId Int
+  versionBefore     String            @db.VarChar(20)
+  versionAfter      String            @db.VarChar(20)
+  changeType        FormulaChangeType
+  changeDescription String?           @db.VarChar(500)
+  changedByCollaboratorId Int?
+  createdAt         DateTime          @default(now())
+
+  kpiClientConfig KpiClientConfig @relation(fields: [kpiClientConfigId], references: [id], onDelete: Cascade)
+  changedBy       Collaborator?   @relation(fields: [changedByCollaboratorId], references: [id], onDelete: SetNull)
+
+  @@index([kpiClientConfigId])
+  @@map("kpi_formula_versions")
+}
+
+model SavedView {
+  id              Int      @id @default(autoincrement())
+  collaboratorId  Int
+  name            String   @db.VarChar(200)
+  kpiDefinitionId Int
+  filters         Json
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  collaborator  Collaborator  @relation(fields: [collaboratorId], references: [id], onDelete: Cascade)
+  kpiDefinition KpiDefinition @relation(fields: [kpiDefinitionId], references: [id])
+
+  @@map("saved_views")
+}
+
+// ============================================================
+// Domaine : Import & Audit
+// ============================================================
+
+model KpiCalcSchedule {
+  id               Int      @id @default(autoincrement())
+  clientId         Int?
+  kpiDefinitionId  Int?
+  cronExpression   String   @db.VarChar(100)
+  periodMode       String   @default("current_month") @db.VarChar(50)
+  allClients       Boolean  @default(false)
+  isActive         Boolean  @default(true)
+  lastRunAt        DateTime?
+  nextRunAt        DateTime?
+  createdAt        DateTime @default(now())
+
+  client        Client?        @relation("KpiCalcScheduleClient", fields: [clientId], references: [id], onDelete: Cascade)
+  kpiDefinition KpiDefinition? @relation(fields: [kpiDefinitionId], references: [id], onDelete: Cascade)
+
+  @@map("kpi_calc_schedules")
+}
+
+model ImportSchedule {
+  id             Int      @id @default(autoincrement())
+  clientId       Int?
+  cronExpression String   @db.VarChar(100)
+  periodMode     String   @default("1_week") @db.VarChar(50)
+  isActive       Boolean  @default(true)
+  lastRunAt      DateTime?
+  nextRunAt      DateTime?
+  createdAt      DateTime @default(now())
+
+  client Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@map("import_schedules")
+}
+
+enum ImportType {
+  INCREMENTAL
+  BACKFILL
+  SCHEDULED
+}
+
+enum ImportStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  COMPLETED_WITH_ERRORS
+  FAILED
+  CANCELLED
+}
+
+enum ImportTrigger {
+  USER
+  SCHEDULER
+}
+
+model ImportJob {
+  id                Int           @id @default(autoincrement())
+  clientId          Int
+  type              ImportType
+  status            ImportStatus  @default(PENDING)
+  startedAt         DateTime?
+  completedAt       DateTime?
+  issuesFetched     Int           @default(0)
+  issuesUpserted    Int           @default(0)
+  worklogsFetched   Int           @default(0)
+  errorCount        Int           @default(0)
+  fromDate          DateTime?
+  lastCursor        Json?
+  triggeredBy       ImportTrigger
+  triggeredByCollaboratorId Int?
+  createdAt         DateTime      @default(now())
+
+  client Client       @relation(fields: [clientId], references: [id])
+  errors ImportError[]
+
+  @@index([clientId, status])
+  @@index([clientId, createdAt])
+  @@map("import_jobs")
+}
+
+enum ErrorType {
+  BLOCKING
+  NON_BLOCKING
+}
+
+model ImportError {
+  id          Int       @id @default(autoincrement())
+  importJobId Int
+  errorCode   String    @db.VarChar(50)
+  errorType   ErrorType
+  message     String    @db.Text
+  entityType  String?   @db.VarChar(50)
+  entityId    String?   @db.VarChar(100)
+  createdAt   DateTime  @default(now())
+
+  importJob ImportJob @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+
+  @@index([importJobId])
+  @@map("import_errors")
+}
+
+model AuditLog {
+  id             Int      @id @default(autoincrement())
+  collaboratorId Int?
+  action         String   @db.VarChar(100)
+  entityType     String   @db.VarChar(50)
+  entityId       String   @db.VarChar(100)
+  before         Json?
+  after          Json?
+  ipAddress      String?  @db.VarChar(45)
+  createdAt      DateTime @default(now())
+
+  collaborator Collaborator? @relation(fields: [collaboratorId], references: [id], onDelete: SetNull)
+
+  @@index([collaboratorId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+enum JobType {
+  IMPORT
+  KPI_CALC
+}
+
+enum JobStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum JobTrigger {
+  MANUAL
+  SCHEDULER
+}
+
+model JobLog {
+  id              Int        @id @default(autoincrement())
+  jobType         JobType
+  clientId        Int?
+  kpiDefinitionId Int?
+  status          JobStatus  @default(RUNNING)
+  triggeredBy     JobTrigger
+  periodMode      String?    @db.VarChar(50)
+  periodStart     DateTime?
+  periodEnd       DateTime?
+  startedAt       DateTime   @default(now())
+  completedAt     DateTime?
+  durationMs      Int?
+  itemsProcessed  Int        @default(0)
+  errorCount      Int        @default(0)
+  errorMessage    String?    @db.Text
+  metadata        Json?
+  scheduleId      Int?
+
+  client        Client?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  kpiDefinition KpiDefinition? @relation("JobLogKpi", fields: [kpiDefinitionId], references: [id], onDelete: SetNull)
+
+  @@index([jobType, startedAt])
+  @@index([clientId])
+  @@map("job_logs")
+}
+
+// ============================================================
+// Domaine : Debug KPI
+// ============================================================
+
+model KpiDebugTrace {
+  id                Int      @id @default(autoincrement())
+  kpiClientConfigId Int
+  periodStart       DateTime
+  periodEnd         DateTime
+  collaboratorId    Int?
+
+  resolvedConfig    Json     // config fusionnée baseConfig + override
+  filtersApplied    Json     // scopeRule, issueTypes, statuses, labels…
+  metrics           Json     // [{ metric, sql, params, rowCount, duration_ms, value }]
+  formulaSteps      String   @db.Text // description lisible du calcul
+  result            Decimal? @db.Decimal(12, 4)
+  ticketCount       Int      @default(0)
+
+  computedAt        DateTime @default(now())
+
+  kpiClientConfig KpiClientConfig @relation(fields: [kpiClientConfigId], references: [id], onDelete: Cascade)
+
+  @@index([kpiClientConfigId, computedAt])
+  @@map("kpi_debug_traces")
+}
+
+// ============================================================
+// Domaine : Paramétrage applicatif
+// ============================================================
+
+model AppSetting {
+  key         String   @id @db.VarChar(100)
+  value       String   @db.VarChar(500)
+  description String?  @db.VarChar(500)
+  updatedAt   DateTime @updatedAt
+
+  @@map("app_settings")
+}

@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Utilisateurs — Portail KPI</title>
+  <link rel="stylesheet" href="_layout.css">
+  <script src="https://unpkg.com/react@17/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+const USERS = [
+  { id:1,  name:'Alice MARTIN',    email:'alice.martin@decade.fr',     role:'Chef de projet', clients:['Client A','Client B'], status:'ACTIF',      lastSaisie:'15/01/2026', daysSince:0 },
+  { id:2,  name:'Bob LEFORT',      email:'bob.lefort@decade.fr',       role:'Développeur',    clients:['Client A'],            status:'ACTIF',      lastSaisie:'15/01/2026', daysSince:0 },
+  { id:3,  name:'Paul RICHARD',    email:'paul.richard@decade.fr',     role:'Développeur',    clients:['Client A'],            status:'SANS_SAISIE',lastSaisie:'10/01/2026', daysSince:5 },
+  { id:4,  name:'Nina MOREAU',     email:'nina.moreau@decade.fr',      role:'Développeur',    clients:['Client C'],            status:'SANS_SAISIE',lastSaisie:'08/01/2026', daysSince:7 },
+  { id:5,  name:'Tom DUPUIS',      email:'tom.dupuis@decade.fr',       role:'Développeur',    clients:['Client A'],            status:'SANS_SAISIE',lastSaisie:'11/01/2026', daysSince:4 },
+  { id:6,  name:'Sophie BLANC',    email:'sophie.blanc@external.com',  role:'Développeur',    clients:['Client B'],            status:'MANUEL',     lastSaisie:'—',          daysSince:null },
+  { id:7,  name:'Marc DURAND',     email:'marc.durand@decade.fr',      role:'Delivery Manager',clients:['Client A','Client B','Client C'], status:'ACTIF', lastSaisie:'15/01/2026', daysSince:0 },
+  { id:8,  name:'Claire VIDAL',    email:'claire.vidal@decade.fr',     role:'Développeur',    clients:['Client B'],            status:'ARCHIVE',    lastSaisie:'01/10/2025', daysSince:106 },
+  { id:9,  name:'Admin DECADE',    email:'admin@decade.fr',            role:'Admin',          clients:['—'],                   status:'ACTIF',      lastSaisie:'—',          daysSince:null },
+];
+
+const STATUS_CONFIG = {
+  ACTIF:       { label:'Actif',       cls:'badge-green' },
+  MANUEL:      { label:'Manuel',      cls:'badge-blue' },
+  SANS_SAISIE: { label:'Sans saisie', cls:'badge-orange' },
+  ARCHIVE:     { label:'Archivé',     cls:'badge-gray' },
+};
+
+const ROLES = ['Tous les rôles','Admin','Delivery Manager','Chef de projet','Développeur'];
+const STATUTS = ['Tous les statuts','ACTIF','MANUEL','SANS_SAISIE','ARCHIVE'];
+
+function Sidebar() {
+  return (
+    <div className="sidebar">
+      <div className="sidebar-logo">
+        <span className="logo-icon">📊</span>
+        <div><div className="logo-text">Portail KPI</div><div className="logo-sub">DECADE</div></div>
+      </div>
+      <div className="nav-section">Navigation</div>
+      <a href="02-dashboard.html" className="nav-item"><span className="nav-icon">🏠</span> Tableau de bord</a>
+      <a href="02-dashboard.html" className="nav-item"><span className="nav-icon">👤</span> Mes KPI</a>
+      <a href="03-equipe-heatmap.html" className="nav-item"><span className="nav-icon">👥</span> Mon équipe</a>
+      <a href="#" className="nav-item"><span className="nav-icon">🏢</span> Vue clients</a>
+      <div className="nav-section">Administration</div>
+      <a href="04-admin-sante.html" className="nav-item"><span className="nav-icon">🩺</span> Santé système</a>
+      <a href="05-admin-imports.html" className="nav-item"><span className="nav-icon">📥</span> Imports</a>
+      <a href="06-admin-utilisateurs.html" className="nav-item active"><span className="nav-icon">🔑</span> Utilisateurs</a>
+      <a href="07-admin-client-config.html" className="nav-item"><span className="nav-icon">⚙️</span> Config. Clients</a>
+      <a href="08-admin-kpi-config.html" className="nav-item"><span className="nav-icon">📐</span> Config. KPI</a>
+      <div className="sidebar-footer">
+        <div className="user-name">Admin DECADE</div><div>Administrateur</div>
+      </div>
+    </div>
+  );
+}
+
+function UsersPage() {
+  const [filterRole,    setFilterRole]    = React.useState('Tous les rôles');
+  const [filterStatus,  setFilterStatus]  = React.useState('Tous les statuts');
+  const [filterClient,  setFilterClient]  = React.useState('Tous les clients');
+  const [showArchived,  setShowArchived]  = React.useState(false);
+  const [search,        setSearch]        = React.useState('');
+  const [modal,         setModal]         = React.useState(null); // null | 'create' | user object
+  const [confirmArchive, setConfirmArchive] = React.useState(null);
+  const [roleModal,     setRoleModal]     = React.useState(null);
+
+  const filtered = USERS.filter(u => {
+    if (!showArchived && u.status === 'ARCHIVE') return false;
+    if (filterRole !== 'Tous les rôles' && u.role !== filterRole) return false;
+    if (filterStatus !== 'Tous les statuts' && u.status !== filterStatus) return false;
+    if (filterClient !== 'Tous les clients' && !u.clients.includes(filterClient)) return false;
+    if (search && !u.name.toLowerCase().includes(search.toLowerCase()) && !u.email.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  return (
+    <div style={{display:'flex'}}>
+      <Sidebar />
+      <div style={{flex:1}}>
+        <div className="header">
+          <div className="breadcrumb">
+            <a href="#">Administration</a><span className="sep">/</span>
+            <span className="current">Utilisateurs</span>
+          </div>
+          <div className="header-right">
+            <span className="sync-info">⏱ Actualisé à 14:32</span>
+            <button className="bell-btn">🔔 <span className="bell-badge">2</span></button>
+            <div className="user-avatar" style={{background:'linear-gradient(135deg,#ff4d4f,#fa8c16)'}}>AD</div>
+            <span className="user-name-header">Admin ▾</span>
+          </div>
+        </div>
+
+        <div className="content">
+          <div className="page-title">🔑 Gestion des utilisateurs</div>
+          <div className="page-subtitle">Liste des comptes, rôles et périmètres d'accès</div>
+
+          {/* Stats */}
+          <div className="stats-grid">
+            <div className="stat-card">
+              <div className="stat-value rag-green">{USERS.filter(u=>u.status==='ACTIF').length}</div>
+              <div className="stat-label">Actifs</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value rag-orange">{USERS.filter(u=>u.status==='SANS_SAISIE').length}</div>
+              <div className="stat-label">Sans saisie</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value" style={{color:'#1677ff'}}>{USERS.filter(u=>u.status==='MANUEL').length}</div>
+              <div className="stat-label">Manuels</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value" style={{color:'#8c8c8c'}}>{USERS.filter(u=>u.status==='ARCHIVE').length}</div>
+              <div className="stat-label">Archivés</div>
+            </div>
+          </div>
+
+          <div className="section-card">
+            {/* Toolbar */}
+            <div style={{display:'flex', gap:8, marginBottom:16, flexWrap:'wrap', alignItems:'center'}}>
+              <input
+                type="text"
+                placeholder="🔍 Rechercher (nom, email)…"
+                value={search}
+                onChange={e=>setSearch(e.target.value)}
+                style={{padding:'6px 12px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13, width:220}}
+              />
+              <select value={filterRole} onChange={e=>setFilterRole(e.target.value)} style={{padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}}>
+                {ROLES.map(r=><option key={r}>{r}</option>)}
+              </select>
+              <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} style={{padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}}>
+                {STATUTS.map(s=><option key={s}>{s}</option>)}
+              </select>
+              <select value={filterClient} onChange={e=>setFilterClient(e.target.value)} style={{padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}}>
+                {['Tous les clients','Client A','Client B','Client C','Client D','Client E'].map(c=><option key={c}>{c}</option>)}
+              </select>
+              <label style={{fontSize:13, display:'flex', alignItems:'center', gap:6, color:'#595959'}}>
+                <input type="checkbox" checked={showArchived} onChange={e=>setShowArchived(e.target.checked)} />
+                Afficher archivés
+              </label>
+              <div style={{marginLeft:'auto', display:'flex', gap:8}}>
+                <button className="btn btn-default btn-sm">⬇ Export CSV</button>
+                <button className="btn btn-primary btn-sm" onClick={()=>setModal('create')}>+ Ajouter un utilisateur</button>
+              </div>
+            </div>
+
+            {/* Table */}
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Utilisateur</th>
+                  <th>Rôle</th>
+                  <th>Clients</th>
+                  <th>Statut</th>
+                  <th>Dernière saisie</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(u => {
+                  const sc = STATUS_CONFIG[u.status];
+                  return (
+                    <tr key={u.id} style={u.status === 'ARCHIVE' ? {opacity:0.6} : {}}>
+                      <td>
+                        <div style={{fontWeight:500}}>{u.name}</div>
+                        <div style={{fontSize:11, color:'#8c8c8c'}}>{u.email}</div>
+                      </td>
+                      <td><span style={{fontSize:13}}>{u.role}</span></td>
+                      <td>
+                        <div style={{display:'flex', flexWrap:'wrap', gap:4}}>
+                          {u.clients.map(c=><span key={c} className="badge badge-blue" style={{fontSize:11}}>{c}</span>)}
+                        </div>
+                      </td>
+                      <td><span className={`badge ${sc.cls}`}>{sc.label}</span></td>
+                      <td style={{fontSize:12, color: u.daysSince >= 7 ? '#ff4d4f' : u.daysSince >= 4 ? '#fa8c16' : '#595959'}}>
+                        {u.lastSaisie}
+                        {u.daysSince != null && u.daysSince > 0 && <span style={{marginLeft:4, fontSize:11}}>({u.daysSince}j)</span>}
+                      </td>
+                      <td>
+                        <div style={{display:'flex', gap:6}}>
+                          <button className="btn btn-default btn-sm" onClick={()=>setModal(u)}>✏️ Modifier</button>
+                          {u.status !== 'ARCHIVE'
+                            ? <button className="btn btn-default btn-sm" style={{color:'#ff4d4f'}} onClick={()=>setConfirmArchive(u)}>🗄 Archiver</button>
+                            : <button className="btn btn-default btn-sm" style={{color:'#52c41a'}}>↺ Réactiver</button>
+                          }
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {filtered.length === 0 && (
+              <div style={{textAlign:'center', padding:40, color:'#8c8c8c', fontSize:14}}>
+                Aucun utilisateur ne correspond aux filtres sélectionnés.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Modal Ajouter / Modifier */}
+      {modal && (
+        <div className="modal-overlay" onClick={()=>setModal(null)}>
+          <div className="modal" onClick={e=>e.stopPropagation()} style={{width:520}}>
+            <div className="modal-header">
+              <span>{modal === 'create' ? '➕ Ajouter un utilisateur' : `✏️ Modifier — ${modal.name}`}</span>
+              <button className="modal-close" onClick={()=>setModal(null)}>✕</button>
+            </div>
+            <div style={{padding:'20px 24px', display:'flex', flexDirection:'column', gap:16}}>
+              {modal === 'create' && (
+                <>
+                  <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+                    <div>
+                      <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>Prénom *</label>
+                      <input style={{width:'100%', padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}} placeholder="Prénom" />
+                    </div>
+                    <div>
+                      <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>Nom *</label>
+                      <input style={{width:'100%', padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}} placeholder="Nom" />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>Email *</label>
+                    <input style={{width:'100%', padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}} placeholder="email@domaine.fr" />
+                  </div>
+                </>
+              )}
+              <div>
+                <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>Rôle applicatif *</label>
+                <select defaultValue={modal !== 'create' ? modal.role : ''} style={{width:'100%', padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}}>
+                  <option value="">Sélectionner un rôle…</option>
+                  <option>Développeur</option>
+                  <option>Chef de projet</option>
+                  <option>Delivery Manager</option>
+                  <option>Admin</option>
+                </select>
+              </div>
+              <div>
+                <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>Clients associés</label>
+                <div style={{border:'1px solid #d9d9d9', borderRadius:6, padding:'8px 10px', display:'flex', flexWrap:'wrap', gap:6}}>
+                  {['Client A','Client B','Client C','Client D','Client E'].map(c => {
+                    const active = modal !== 'create' && modal.clients.includes(c);
+                    return (
+                      <span key={c} className={`badge ${active ? 'badge-blue' : 'badge-gray'}`} style={{cursor:'pointer', fontSize:12}}>
+                        {active ? '✓ ' : '+ '}{c}
+                      </span>
+                    );
+                  })}
+                </div>
+                <div style={{fontSize:11, color:'#8c8c8c', marginTop:4}}>Cliquez pour associer / dissocier un client</div>
+              </div>
+              {modal !== 'create' && (
+                <div style={{background:'#f5f5f5', borderRadius:6, padding:'10px 12px', fontSize:12, color:'#595959'}}>
+                  <strong>Compte JIRA :</strong> {modal.email} · <strong>Statut :</strong> {STATUS_CONFIG[modal.status].label} · <strong>Dernière saisie :</strong> {modal.lastSaisie}
+                </div>
+              )}
+            </div>
+            <div style={{padding:'12px 24px', borderTop:'1px solid #f0f0f0', display:'flex', justifyContent:'flex-end', gap:8}}>
+              <button className="btn btn-default" onClick={()=>setModal(null)}>Annuler</button>
+              <button className="btn btn-primary" onClick={()=>setModal(null)}>
+                {modal === 'create' ? 'Créer l\'utilisateur' : 'Sauvegarder'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Archive */}
+      {confirmArchive && (
+        <div className="modal-overlay" onClick={()=>setConfirmArchive(null)}>
+          <div className="modal" onClick={e=>e.stopPropagation()} style={{width:440}}>
+            <div className="modal-header">
+              <span>🗄 Archiver un utilisateur</span>
+              <button className="modal-close" onClick={()=>setConfirmArchive(null)}>✕</button>
+            </div>
+            <div style={{padding:'20px 24px'}}>
+              <p style={{fontSize:14, marginBottom:16}}>
+                Vous allez archiver <strong>{confirmArchive.name}</strong>.<br/>
+                Cet utilisateur ne pourra plus se connecter. Ses données historiques seront conservées.
+              </p>
+              <div>
+                <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>Motif d'archivage (optionnel)</label>
+                <input style={{width:'100%', padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}} placeholder="Ex. : Départ du projet, changement de prestataire…" />
+              </div>
+            </div>
+            <div style={{padding:'12px 24px', borderTop:'1px solid #f0f0f0', display:'flex', justifyContent:'flex-end', gap:8}}>
+              <button className="btn btn-default" onClick={()=>setConfirmArchive(null)}>Annuler</button>
+              <button className="btn btn-primary" style={{background:'#ff4d4f', borderColor:'#ff4d4f'}} onClick={()=>setConfirmArchive(null)}>
+                Confirmer l'archivage
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.render(<UsersPage />, document.getElementById('root'));
+</script>
+</body>
+</html>

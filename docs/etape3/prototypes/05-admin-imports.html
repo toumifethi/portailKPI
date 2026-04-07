@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Imports — Portail KPI</title>
+  <link rel="stylesheet" href="_layout.css">
+  <script src="https://unpkg.com/react@17/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+const IMPORTS = [
+  { id:142, client:'Client A', type:'Planifié',     date:'15/01 02h14', duration:'3m42s', issues:234, worklogs:1820, status:'ok',      errors:0  },
+  { id:141, client:'Client B', type:'Planifié',     date:'15/01 02h08', duration:'4m12s', issues:189, worklogs:1243, status:'warning', errors:14 },
+  { id:140, client:'Client D', type:'Planifié',     date:'15/01 02h22', duration:'2m01s', issues: 67, worklogs: 412, status:'ok',      errors:0  },
+  { id:139, client:'Client A', type:'Manuel',       date:'14/01 14h32', duration:'0m45s', issues: 12, worklogs:  89, status:'ok',      errors:0  },
+  { id:138, client:'Client C', type:'Planifié',     date:'13/01 02h05', duration:'—',     issues:  0, worklogs:   0, status:'error',   errors:1  },
+  { id:137, client:'Client B', type:'Backfill',     date:'12/01 10h00', duration:'34m18s',issues:4821,worklogs:31240,status:'ok',     errors:0  },
+  { id:136, client:'Client E', type:'Planifié',     date:'15/01 02h31', duration:'1m55s', issues: 43, worklogs: 298, status:'ok',      errors:0  },
+  { id:135, client:'Client A', type:'Planifié',     date:'14/01 02h11', duration:'3m22s', issues:221, worklogs:1780, status:'ok',      errors:0  },
+];
+
+const JOB_DETAIL = {
+  phases: [
+    { name: 'Membres du projet',     status: 'ok', count: 12 },
+    { name: 'Entités de regroupement', status: 'ok', count: 8 },
+    { name: 'Issues JIRA',           status: 'ok', count: 189 },
+    { name: 'Worklogs JIRA',         status: 'ok', count: 1243 },
+    { name: 'Calcul KPI',            status: 'ok', count: null },
+  ],
+  errors: [
+    { code:'MISSING_ESTIMATE', type:'Non bloquante', entity:'BETA-234', msg:'Estimation initiale manquante' },
+    { code:'MISSING_ESTIMATE', type:'Non bloquante', entity:'BETA-235', msg:'Estimation initiale manquante' },
+    { code:'UNKNOWN_USER',     type:'Non bloquante', entity:'Worklog #5821', msg:'AccountId "xyz123" inconnu dans l\'application' },
+    { code:'MISSING_ESTIMATE', type:'Non bloquante', entity:'BETA-240', msg:'Estimation initiale manquante' },
+  ]
+};
+
+function Sidebar() {
+  return (
+    <div className="sidebar">
+      <div className="sidebar-logo">
+        <span className="logo-icon">📊</span>
+        <div><div className="logo-text">Portail KPI</div><div className="logo-sub">DECADE</div></div>
+      </div>
+      <div className="nav-section">Navigation</div>
+      <a href="02-dashboard.html" className="nav-item"><span className="nav-icon">🏠</span> Tableau de bord</a>
+      <a href="02-dashboard.html" className="nav-item"><span className="nav-icon">👤</span> Mes KPI</a>
+      <a href="03-equipe-heatmap.html" className="nav-item"><span className="nav-icon">👥</span> Mon équipe</a>
+      <a href="#" className="nav-item"><span className="nav-icon">🏢</span> Vue clients</a>
+      <div className="nav-section">Administration</div>
+      <a href="04-admin-sante.html" className="nav-item"><span className="nav-icon">🩺</span> Santé système</a>
+      <a href="05-admin-imports.html" className="nav-item active"><span className="nav-icon">📥</span> Imports</a>
+      <a href="06-admin-utilisateurs.html" className="nav-item"><span className="nav-icon">🔑</span> Utilisateurs</a>
+      <a href="07-admin-client-config.html" className="nav-item"><span className="nav-icon">⚙️</span> Config. Clients</a>
+      <a href="08-admin-kpi-config.html" className="nav-item"><span className="nav-icon">📐</span> Config. KPI</a>
+      <div className="sidebar-footer">
+        <div className="user-name">Admin DECADE</div><div>Administrateur</div>
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({ status, errors }) {
+  if (status === 'ok')      return <span className="badge badge-green">✅ Réussi</span>;
+  if (status === 'warning') return <span className="badge badge-orange">⚠️ Avec {errors} err.</span>;
+  if (status === 'error')   return <span className="badge badge-red">❌ Échec</span>;
+  if (status === 'running') return <span className="badge badge-blue">⏳ En cours</span>;
+  return null;
+}
+
+function TypeBadge({ type }) {
+  if (type === 'Planifié') return <span className="badge badge-gray">{type}</span>;
+  if (type === 'Manuel')   return <span className="badge badge-blue">{type}</span>;
+  if (type === 'Backfill') return <span className="badge badge-purple">{type}</span>;
+  return null;
+}
+
+// Modal déclenchement import
+function TriggerModal({ onClose }) {
+  const [type, setType]     = React.useState('incremental');
+  const [client, setClient] = React.useState('');
+  const [date, setDate]     = React.useState('');
+  const [running, setRunning] = React.useState(false);
+  const [done, setDone]     = React.useState(false);
+
+  const handleStart = () => {
+    if (!client) return;
+    setRunning(true);
+    setTimeout(() => { setRunning(false); setDone(true); }, 2500);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <span className="modal-title">▶ Déclencher un import</span>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          {done ? (
+            <div className="alert-banner success">
+              <span className="alert-icon">✅</span>
+              <div><strong>Import démarré avec succès</strong><br/>
+              <span style={{fontSize:12}}>Vous pouvez suivre la progression dans l'historique ci-dessous.</span></div>
+            </div>
+          ) : (
+            <>
+              <div className="form-group">
+                <label className="form-label">Client *</label>
+                <select className="form-select" value={client} onChange={e => setClient(e.target.value)}>
+                  <option value="">Sélectionner un client...</option>
+                  <option>Client A</option><option>Client B</option>
+                  <option>Client C</option><option>Client D</option><option>Client E</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Type d'import *</label>
+                <div style={{display:'flex', flexDirection:'column', gap:8}}>
+                  <label style={{display:'flex', alignItems:'flex-start', gap:8, cursor:'pointer', padding:10, border:`1px solid ${type==='incremental'?'#1677ff':'#d9d9d9'}`, borderRadius:6, background: type==='incremental'?'#e6f4ff':'#fff'}}>
+                    <input type="radio" checked={type==='incremental'} onChange={() => setType('incremental')} style={{marginTop:2}}/>
+                    <div>
+                      <div style={{fontWeight:500}}>Import incrémental</div>
+                      <div style={{fontSize:12, color:'#8c8c8c'}}>Récupère uniquement les tickets modifiés depuis le dernier import</div>
+                    </div>
+                  </label>
+                  <label style={{display:'flex', alignItems:'flex-start', gap:8, cursor:'pointer', padding:10, border:`1px solid ${type==='backfill'?'#722ed1':'#d9d9d9'}`, borderRadius:6, background: type==='backfill'?'#f9f0ff':'#fff'}}>
+                    <input type="radio" checked={type==='backfill'} onChange={() => setType('backfill')} style={{marginTop:2}}/>
+                    <div>
+                      <div style={{fontWeight:500}}>Import backfill (historique)</div>
+                      <div style={{fontSize:12, color:'#8c8c8c'}}>Charge toutes les données depuis une date donnée. Peut être long.</div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+              {type === 'backfill' && (
+                <div className="form-group">
+                  <label className="form-label">Date de début *</label>
+                  <input type="date" className="form-input" value={date} onChange={e => setDate(e.target.value)} />
+                  <div className="form-hint">⚠️ Un backfill sur une longue période peut prendre plusieurs heures.</div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-default" onClick={onClose}>Fermer</button>
+          {!done && (
+            <button
+              className="btn btn-primary"
+              onClick={handleStart}
+              disabled={!client || running}
+              style={{opacity: (!client || running) ? 0.6 : 1}}
+            >
+              {running ? '⏳ Démarrage...' : '▶ Démarrer l\'import'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Modal détail job
+function DetailModal({ job, onClose }) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" style={{width:640}} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <span className="modal-title">📋 Import #{job.id} — {job.client}</span>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body" style={{maxHeight:'65vh', overflowY:'auto'}}>
+          <div className="stats-grid" style={{gridTemplateColumns:'repeat(4,1fr)', marginBottom:20}}>
+            <div className="stat-card">
+              <div className="stat-value" style={{fontSize:20}}>{job.duration}</div>
+              <div className="stat-label">Durée</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value" style={{fontSize:20}}>{job.issues.toLocaleString()}</div>
+              <div className="stat-label">Issues</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value" style={{fontSize:20}}>{job.worklogs.toLocaleString()}</div>
+              <div className="stat-label">Worklogs</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value" style={{fontSize:20, color: job.errors > 0 ? '#fa8c16' : '#52c41a'}}>{job.errors}</div>
+              <div className="stat-label">Erreurs</div>
+            </div>
+          </div>
+
+          <div style={{marginBottom:16}}>
+            <div style={{fontWeight:600, fontSize:13, marginBottom:12}}>Progression par phase</div>
+            {JOB_DETAIL.phases.map((p, i) => (
+              <div className="progress-row" key={i}>
+                <span className="progress-label">{p.status === 'ok' ? '✅' : '❌'} {p.name}</span>
+                <span style={{fontSize:12, color:'#8c8c8c'}}>{p.count !== null ? `${p.count} éléments` : 'Déclenché'}</span>
+              </div>
+            ))}
+          </div>
+
+          {JOB_DETAIL.errors.length > 0 && (
+            <div>
+              <div style={{fontWeight:600, fontSize:13, marginBottom:12}}>
+                Erreurs non bloquantes ({JOB_DETAIL.errors.length})
+                <span style={{marginLeft:8, fontSize:12, color:'#8c8c8c', fontWeight:400}}>
+                  — L'import s'est terminé normalement malgré ces erreurs
+                </span>
+              </div>
+              <table className="data-table">
+                <thead><tr><th>Code</th><th>Entité</th><th>Message</th></tr></thead>
+                <tbody>
+                  {JOB_DETAIL.errors.map((e, i) => (
+                    <tr key={i}>
+                      <td><span className="badge badge-orange">{e.code}</span></td>
+                      <td style={{fontSize:12}}>{e.entity}</td>
+                      <td style={{fontSize:12, color:'#595959'}}>{e.msg}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-default btn-sm">↓ Exporter les erreurs (CSV)</button>
+          <button className="btn btn-default" onClick={onClose}>Fermer</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ImportsPage() {
+  const [showTrigger, setShowTrigger] = React.useState(false);
+  const [detailJob, setDetailJob]     = React.useState(null);
+  const [filterClient, setFilterClient] = React.useState('Tous');
+  const [filterStatus, setFilterStatus] = React.useState('Tous');
+
+  const filtered = IMPORTS.filter(j =>
+    (filterClient === 'Tous' || j.client === filterClient) &&
+    (filterStatus === 'Tous' || j.status === filterStatus)
+  );
+
+  return (
+    <div style={{display:'flex'}}>
+      <Sidebar />
+      <div style={{flex:1}}>
+        <div className="header">
+          <div className="breadcrumb">
+            <a href="#">Administration</a><span className="sep">/</span>
+            <span className="current">Suivi des imports</span>
+          </div>
+          <div className="header-right">
+            <span className="sync-info">⏱ Données au 15/01 – 02h14</span>
+            <button className="bell-btn">🔔 <span className="bell-badge">2</span></button>
+            <div className="user-avatar" style={{background:'linear-gradient(135deg,#ff4d4f,#fa8c16)'}}>AD</div>
+            <span className="user-name-header">Admin ▾</span>
+          </div>
+        </div>
+
+        <div className="content">
+          <div className="page-title">📥 Suivi des imports</div>
+          <div className="page-subtitle">Historique et déclenchement des imports JIRA / Tempo</div>
+
+          {/* Actions rapides */}
+          <div style={{display:'flex', gap:10, marginBottom:20}}>
+            <button className="btn btn-primary" onClick={() => setShowTrigger(true)}>
+              ▶ Déclencher un import
+            </button>
+            <button className="btn btn-default" onClick={() => window.location.href='04-admin-sante.html'}>
+              🩺 Voir la santé système
+            </button>
+          </div>
+
+          {/* Filtres */}
+          <div className="section-card" style={{padding:'12px 16px', marginBottom:16}}>
+            <div style={{display:'flex', gap:12, alignItems:'center', flexWrap:'wrap'}}>
+              <span style={{fontSize:13, fontWeight:500, color:'#8c8c8c'}}>Filtrer :</span>
+              <select className="form-select" style={{width:'auto'}} value={filterClient} onChange={e => setFilterClient(e.target.value)}>
+                <option>Tous</option>
+                <option>Client A</option><option>Client B</option>
+                <option>Client C</option><option>Client D</option><option>Client E</option>
+              </select>
+              <select className="form-select" style={{width:'auto'}} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+                <option value="Tous">Tous les statuts</option>
+                <option value="ok">✅ Réussi</option>
+                <option value="warning">⚠️ Avec erreurs</option>
+                <option value="error">❌ Échec</option>
+              </select>
+              <span style={{fontSize:12, color:'#8c8c8c', marginLeft:'auto'}}>
+                {filtered.length} import(s) affiché(s)
+              </span>
+            </div>
+          </div>
+
+          {/* Tableau */}
+          <div className="section-card" style={{padding:0, overflow:'hidden'}}>
+            <table className="data-table" style={{margin:0}}>
+              <thead>
+                <tr>
+                  <th>#</th><th>Date / Heure</th><th>Client</th><th>Type</th>
+                  <th style={{textAlign:'center'}}>Issues</th>
+                  <th style={{textAlign:'center'}}>Worklogs</th>
+                  <th>Durée</th><th>Statut</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(job => (
+                  <tr key={job.id}
+                    style={job.status==='error' ? {background:'#fff2f0'} : job.status==='warning' ? {background:'#fffbe6'} : {}}>
+                    <td style={{color:'#8c8c8c', fontSize:12}}>#{job.id}</td>
+                    <td style={{fontSize:12}}>{job.date}</td>
+                    <td style={{fontWeight:500}}>{job.client}</td>
+                    <td><TypeBadge type={job.type} /></td>
+                    <td style={{textAlign:'center'}}>{job.issues > 0 ? job.issues.toLocaleString() : '—'}</td>
+                    <td style={{textAlign:'center'}}>{job.worklogs > 0 ? job.worklogs.toLocaleString() : '—'}</td>
+                    <td style={{fontSize:12}}>{job.duration}</td>
+                    <td><StatusBadge status={job.status} errors={job.errors} /></td>
+                    <td>
+                      <div style={{display:'flex', gap:6}}>
+                        <button className="btn btn-default btn-sm" onClick={() => setDetailJob(job)}>
+                          Détail
+                        </button>
+                        {job.status === 'error' && (
+                          <button className="btn btn-default btn-sm" style={{color:'#1677ff'}}>↺ Relancer</button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={{padding:'12px 16px', background:'#fafafa', borderTop:'1px solid #f0f0f0', fontSize:12, color:'#8c8c8c', textAlign:'right'}}>
+              Affichage 1–{filtered.length} sur {IMPORTS.length} imports · &nbsp;
+              <a href="#" style={{color:'#1677ff'}}>Voir plus...</a>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      {showTrigger && <TriggerModal onClose={() => setShowTrigger(false)} />}
+      {detailJob && <DetailModal job={detailJob} onClose={() => setDetailJob(null)} />}
+    </div>
+  );
+}
+
+ReactDOM.render(<ImportsPage />, document.getElementById('root'));
+</script>
+</body>
+</html>

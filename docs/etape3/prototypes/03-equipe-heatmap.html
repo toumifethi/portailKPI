@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Équipe & Heatmap — Portail KPI</title>
+  <link rel="stylesheet" href="_layout.css">
+  <script src="https://unpkg.com/react@17/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+// ─── DONNÉES MOCK ────────────────────────────────────────────────────────────
+const TEAM = [
+  { id: 1, name: 'Jean DUPONT',    initials: 'JD', saisie: true,  charges: -4.2,  qualite: 12.3 },
+  { id: 2, name: 'Sophie MARTIN',  initials: 'SM', saisie: true,  charges:  2.1,  qualite:  8.7 },
+  { id: 3, name: 'Lucas BERNARD',  initials: 'LB', saisie: true,  charges: 22.4,  qualite: 41.2 },
+  { id: 4, name: 'Emma PETIT',     initials: 'EP', saisie: true,  charges: -1.8,  qualite:  5.4 },
+  { id: 5, name: 'Paul RICHARD',   initials: 'PR', saisie: false, charges: null,  qualite: null },
+];
+
+const MONTHS = ['Août', 'Sep', 'Oct', 'Nov', 'Déc', 'Jan'];
+
+// Données heatmap : [utilisateur][mois] = valeur
+const HEATMAP_DATA = {
+  'Respect des charges': {
+    'Jean DUPONT':   [ 7.2,  5.1, -2.3, -3.8, -4.1, -4.2],
+    'Sophie MARTIN': [-1.2,  0.8,  1.5,  2.0,  2.1,  2.1],
+    'Lucas BERNARD': [18.5, 22.1, 19.8, 24.2, 21.5, 22.4],
+    'Emma PETIT':    [ 3.2,  1.1, -0.8, -1.5, -2.0, -1.8],
+    'Paul RICHARD':  [ 8.5,  6.2,  4.5, null, null, null],
+  },
+  'Qualité': {
+    'Jean DUPONT':   [15.2, 13.1, 12.8, 11.5, 12.0, 12.3],
+    'Sophie MARTIN': [10.5,  9.8,  9.2,  8.8,  8.7,  8.7],
+    'Lucas BERNARD': [38.1, 40.2, 39.5, 42.1, 40.8, 41.2],
+    'Emma PETIT':    [ 6.8,  6.2,  5.9,  5.6,  5.5,  5.4],
+    'Paul RICHARD':  [22.1, 19.5, 18.2, null, null, null],
+  }
+};
+
+const CHART_COLORS = ['#1677ff', '#52c41a', '#ff4d4f', '#722ed1', '#fa8c16'];
+
+// ─── COULEUR HEATMAP ─────────────────────────────────────────────────────────
+function getHeatColor(value, kpi) {
+  if (value === null) return { bg: '#fafafa', fg: '#bfbfbf' };
+  if (kpi === 'Respect des charges') {
+    if (value < 0)   return { bg: '#d9f7be', fg: '#237804' };
+    if (value < 5)   return { bg: '#f6ffed', fg: '#52c41a' };
+    if (value < 15)  return { bg: '#fff7e6', fg: '#d46b08' };
+    return { bg: '#fff1f0', fg: '#cf1322' };
+  }
+  // Qualité : plus le ratio est bas, mieux c'est
+  if (value < 5)   return { bg: '#d9f7be', fg: '#237804' };
+  if (value < 15)  return { bg: '#f6ffed', fg: '#52c41a' };
+  if (value < 30)  return { bg: '#fff7e6', fg: '#d46b08' };
+  return { bg: '#fff1f0', fg: '#cf1322' };
+}
+
+function getRagClass(value, kpi) {
+  if (value === null) return 'rag-gray';
+  const { fg } = getHeatColor(value, kpi);
+  if (fg === '#237804' || fg === '#52c41a') return 'rag-green';
+  if (fg === '#d46b08') return 'rag-orange';
+  return 'rag-red';
+}
+
+// ─── SIDEBAR / HEADER (réutilisés) ───────────────────────────────────────────
+function Sidebar({ active }) {
+  return (
+    <div className="sidebar">
+      <div className="sidebar-logo">
+        <span className="logo-icon">📊</span>
+        <div><div className="logo-text">Portail KPI</div><div className="logo-sub">DECADE</div></div>
+      </div>
+      <div className="nav-section">Navigation</div>
+      <a href="02-dashboard.html" className="nav-item"><span className="nav-icon">🏠</span> Tableau de bord</a>
+      <a href="02-dashboard.html" className="nav-item"><span className="nav-icon">👤</span> Mes KPI</a>
+      <a href="03-equipe-heatmap.html" className={`nav-item ${active==='team'?'active':''}`}><span className="nav-icon">👥</span> Mon équipe</a>
+      <a href="#" className="nav-item"><span className="nav-icon">🏢</span> Vue clients</a>
+      <div className="nav-section">Administration</div>
+      <a href="04-admin-sante.html" className="nav-item"><span className="nav-icon">🩺</span> Santé système</a>
+      <a href="05-admin-imports.html" className="nav-item"><span className="nav-icon">📥</span> Imports</a>
+      <a href="06-admin-utilisateurs.html" className="nav-item"><span className="nav-icon">🔑</span> Utilisateurs</a>
+      <a href="07-admin-client-config.html" className="nav-item"><span className="nav-icon">⚙️</span> Config. Clients</a>
+      <a href="08-admin-kpi-config.html" className="nav-item"><span className="nav-icon">📐</span> Config. KPI</a>
+      <div className="sidebar-footer">
+        <div className="user-name">Marie LEROY</div><div>Chef de projet</div>
+      </div>
+    </div>
+  );
+}
+function Header() {
+  return (
+    <div className="header">
+      <div className="breadcrumb">
+        <a href="02-dashboard.html">Dashboard</a><span className="sep">/</span>
+        <a href="#">Client A</a><span className="sep">/</span>
+        <span className="current">Équipe ALPHA</span>
+      </div>
+      <div className="header-right">
+        <span className="sync-info">⏱ Données au 15/01 – 02h14</span>
+        <button className="bell-btn">🔔</button>
+        <div className="user-avatar">ML</div>
+        <span className="user-name-header">Marie LEROY ▾</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── TABLEAU KPI ÉQUIPE ───────────────────────────────────────────────────────
+function TeamTable({ onSelectUser }) {
+  const avg = (field) => {
+    const vals = TEAM.filter(u => u[field] !== null).map(u => u[field]);
+    return (vals.reduce((a,b) => a+b, 0) / vals.length).toFixed(1);
+  };
+  return (
+    <div className="section-card">
+      <div className="section-header">
+        <span className="section-header-title">📊 KPI de l'équipe — Janvier 2025</span>
+        <button className="btn btn-default btn-sm">↓ Exporter ▾</button>
+      </div>
+      <div className="alert-banner warning" style={{marginBottom:16}}>
+        <span className="alert-icon">⚠️</span>
+        <div><strong>Paul RICHARD</strong> n'a pas enregistré de temps sur JIRA depuis 5 jours.</div>
+      </div>
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>Collaborateur</th>
+            <th>Rôle</th>
+            <th style={{textAlign:'center'}}>Respect des charges</th>
+            <th style={{textAlign:'center'}}>Qualité</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {TEAM.map(u => (
+            <tr key={u.id} style={!u.saisie ? {background:'#fffbe6'} : {}}>
+              <td>
+                <div style={{display:'flex', alignItems:'center', gap:8}}>
+                  <div className="user-avatar" style={{width:28, height:28, fontSize:11}}>{u.initials}</div>
+                  <span style={{fontWeight:500}}>{u.name}</span>
+                  {!u.saisie && <span className="badge badge-orange" style={{fontSize:10}}>⚠️ Sans saisie</span>}
+                </div>
+              </td>
+              <td><span className="badge badge-blue">Développeur</span></td>
+              <td style={{textAlign:'center'}}>
+                {u.charges !== null
+                  ? <span className={getRagClass(u.charges, 'Respect des charges')} style={{fontWeight:700}}>
+                      {u.charges > 0 ? '+' : ''}{u.charges}%
+                    </span>
+                  : <span className="rag-gray">—</span>
+                }
+              </td>
+              <td style={{textAlign:'center'}}>
+                {u.qualite !== null
+                  ? <span className={getRagClass(u.qualite, 'Qualité')} style={{fontWeight:700}}>
+                      {u.qualite}%
+                    </span>
+                  : <span className="rag-gray">—</span>
+                }
+              </td>
+              <td>
+                <button className="btn btn-default btn-sm" onClick={() => onSelectUser(u)}>
+                  Voir détail →
+                </button>
+              </td>
+            </tr>
+          ))}
+          <tr style={{fontWeight:700, background:'#f9f9f9'}}>
+            <td colSpan={2} style={{color:'#8c8c8c', fontSize:12}}>MOYENNE ÉQUIPE</td>
+            <td style={{textAlign:'center'}}>
+              <span className="rag-orange">+{avg('charges')}%</span>
+            </td>
+            <td style={{textAlign:'center'}}>
+              <span className="rag-red">{avg('qualite')}%</span>
+            </td>
+            <td/>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ─── HEATMAP ─────────────────────────────────────────────────────────────────
+function Heatmap({ kpi }) {
+  const data = HEATMAP_DATA[kpi];
+  return (
+    <div className="section-card">
+      <div className="section-header">
+        <span className="section-header-title">🗓 Heatmap — {kpi} (6 derniers mois)</span>
+        <div style={{display:'flex', gap:8, alignItems:'center', fontSize:12}}>
+          <span style={{background:'#d9f7be', padding:'2px 8px', borderRadius:4}}>≤ 0%</span>
+          <span style={{background:'#fff7e6', padding:'2px 8px', borderRadius:4}}>5–15%</span>
+          <span style={{background:'#fff1f0', padding:'2px 8px', borderRadius:4}}>{'> 15%'}</span>
+          <span style={{background:'#fafafa', border:'1px solid #f0f0f0', padding:'2px 8px', borderRadius:4}}>—</span>
+        </div>
+      </div>
+      <div style={{overflowX:'auto'}}>
+        <table className="heatmap-table" style={{minWidth:600}}>
+          <thead>
+            <tr>
+              <th className="user-col">Collaborateur</th>
+              {MONTHS.map(m => <th key={m}>{m}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {TEAM.map(u => {
+              const row = data[u.name];
+              return (
+                <tr key={u.id}>
+                  <td className="user-cell">
+                    <div style={{display:'flex', alignItems:'center', gap:6}}>
+                      <div className="user-avatar" style={{width:24, height:24, fontSize:10}}>{u.initials}</div>
+                      {u.name}
+                    </div>
+                  </td>
+                  {row.map((val, idx) => {
+                    const { bg, fg } = getHeatColor(val, kpi);
+                    return (
+                      <td key={idx} style={{background: bg, color: fg}}
+                        title={val !== null ? `${u.name} — ${MONTHS[idx]} : ${val > 0 ? '+' : ''}${val}%` : `Pas de données`}>
+                        {val !== null ? `${val > 0 ? '+' : ''}${val}%` : '—'}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── CHART ÉVOLUTION ─────────────────────────────────────────────────────────
+function EvolutionChart({ kpi }) {
+  const canvasRef = React.useRef(null);
+  const chartRef  = React.useRef(null);
+
+  React.useEffect(() => {
+    if (chartRef.current) chartRef.current.destroy();
+    const ctx = canvasRef.current.getContext('2d');
+    chartRef.current = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: MONTHS,
+        datasets: TEAM.filter(u => u.saisie).map((u, i) => ({
+          label: u.name.split(' ')[0],
+          data: HEATMAP_DATA[kpi][u.name],
+          borderColor: CHART_COLORS[i],
+          backgroundColor: CHART_COLORS[i] + '15',
+          tension: 0.4, fill: false, pointRadius: 4,
+          spanGaps: true,
+        }))
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12, padding: 16 } },
+          tooltip: { mode: 'index', intersect: false }
+        },
+        scales: {
+          y: { grid: { color: '#f5f5f5' }, ticks: { callback: v => v + '%', font: { size: 11 } } },
+          x: { grid: { display: false }, ticks: { font: { size: 11 } } }
+        }
+      }
+    });
+    return () => chartRef.current && chartRef.current.destroy();
+  }, [kpi]);
+
+  return (
+    <div className="chart-card">
+      <div className="chart-card-header">
+        <span className="chart-card-title">📈 Évolution mensuelle — {kpi}</span>
+      </div>
+      <div style={{height: 240}}>
+        <canvas ref={canvasRef} />
+      </div>
+    </div>
+  );
+}
+
+// ─── PAGE ────────────────────────────────────────────────────────────────────
+function TeamPage() {
+  const [activeKpi, setActiveKpi] = React.useState('Respect des charges');
+  const [selectedUser, setSelectedUser] = React.useState(null);
+
+  return (
+    <div style={{display:'flex'}}>
+      <Sidebar active="team" />
+      <div style={{flex:1}}>
+        <Header />
+        <div className="content">
+
+          <div className="page-title">👥 Équipe ALPHA — Client A</div>
+          <div className="page-subtitle">Chef de projet : Marie LEROY · 5 membres · Données au 15 janvier 2025</div>
+
+          {/* Period bar */}
+          <div className="period-bar">
+            <div style={{display:'flex', gap:8}}>
+              <button className="period-type-btn active">Mois</button>
+              <button className="period-type-btn">Trimestre</button>
+            </div>
+            <div style={{display:'flex', alignItems:'center', gap:8}}>
+              <button className="period-btn">◀</button>
+              <span className="period-label">Janvier 2025</span>
+              <button className="period-btn">▶</button>
+            </div>
+            <button className="btn btn-default btn-sm">↓ Exporter ▾</button>
+          </div>
+
+          {selectedUser ? (
+            <div className="alert-banner" style={{background:'#e6f4ff', border:'1px solid #91caff', marginBottom:16}}>
+              <span className="alert-icon">👤</span>
+              <div>Vue filtrée pour <strong>{selectedUser.name}</strong></div>
+              <button className="alert-action" onClick={() => setSelectedUser(null)}>✕ Retour à l'équipe</button>
+            </div>
+          ) : null}
+
+          <TeamTable onSelectUser={setSelectedUser} />
+
+          {/* Onglets KPI pour heatmap & chart */}
+          <div className="tab-bar">
+            {Object.keys(HEATMAP_DATA).map(k => (
+              <div
+                key={k}
+                className={`tab-item ${activeKpi===k ? 'active' : ''}`}
+                onClick={() => setActiveKpi(k)}
+              >
+                {k}
+              </div>
+            ))}
+          </div>
+
+          <Heatmap kpi={activeKpi} />
+          <EvolutionChart kpi={activeKpi} />
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.render(<TeamPage />, document.getElementById('root'));
+</script>
+</body>
+</html>

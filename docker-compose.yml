@@ -1,0 +1,56 @@
+version: '3.9'
+
+services:
+  backend:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: redis://redis:6379
+      AZURE_AD_TENANT_ID: ${AZURE_AD_TENANT_ID}
+      AZURE_AD_CLIENT_ID: ${AZURE_AD_CLIENT_ID}
+      CORS_ORIGIN: ${FRONTEND_URL:-http://localhost:5173}
+      SQL_KPI_TIMEOUT_MS: 30000
+      KPI_RECALC_CONCURRENCY: 2
+      JIRA_PAGE_SIZE: 100
+    ports:
+      - "3000:3000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./src/frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_AZURE_AD_TENANT_ID: ${AZURE_AD_TENANT_ID}
+        VITE_AZURE_AD_CLIENT_ID: ${AZURE_AD_CLIENT_ID}
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  redis_data:

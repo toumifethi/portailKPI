@@ -1,0 +1,33 @@
+# === Secrets ===
+.env
+.env.local
+.env.*.local
+
+# === Node.js ===
+node_modules/
+dist/
+build/
+
+# === Logs ===
+*.log
+logs/
+
+# === IDE ===
+.vscode/
+.idea/
+*.swp
+
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === Prisma ===
+src/backend/prisma/migrations/
+!src/backend/prisma/migrations/.gitkeep
+
+# === Tests ===
+coverage/
+
+# === Docker ===
+.dockerignore
+docker-compose.dev.yml

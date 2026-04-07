@@ -1,0 +1,22 @@
+FROM node:20-alpine
+
+# OpenSSL requis par Prisma
+RUN apk add --no-cache openssl
+
+WORKDIR /app
+
+# Installer les dépendances (layer mis en cache)
+COPY package.json ./
+RUN npm install
+
+# Copier la config et le schéma Prisma
+COPY tsconfig.json tsconfig.seed.json ./
+COPY prisma ./prisma
+
+# Générer le client Prisma
+RUN npx prisma generate
+
+# Le code src/ est monté en volume → hot-reload via ts-node-dev
+# Au démarrage : génération du client Prisma + serveur dev (sans operation DB destructive)
+EXPOSE 3000
+CMD ["sh", "-c", "npx prisma generate && npm run dev"]

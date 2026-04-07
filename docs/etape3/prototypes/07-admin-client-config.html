@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Config. Clients — Portail KPI</title>
+  <link rel="stylesheet" href="_layout.css">
+  <script src="https://unpkg.com/react@17/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+const CLIENTS = [
+  {
+    id:1, name:'Client A', jiraUrl:'https://clienta.atlassian.net', jiraEmail:'service@clienta.com',
+    status:'ACTIVE', lastImport:'15/01/2026 02h14', importStatus:'ok',
+    groupingType:'EPIC', tempo:false, spRatio:null,
+    projects:[
+      {key:'ALPHA', name:'Équipe ALPHA', type:'CLASSIC', status:'ACTIVE'},
+      {key:'BETA',  name:'Équipe BETA',  type:'CLASSIC', status:'ACTIVE'},
+    ]
+  },
+  {
+    id:2, name:'Client B', jiraUrl:'https://clientb.atlassian.net', jiraEmail:'service@clientb.com',
+    status:'ACTIVE', lastImport:'15/01/2026 02h08', importStatus:'warning',
+    groupingType:'COMPONENT', tempo:true, spRatio:8,
+    projects:[
+      {key:'GAMMA', name:'Équipe GAMMA', type:'NEXT_GEN', status:'ACTIVE'},
+    ]
+  },
+  {
+    id:3, name:'Client C', jiraUrl:'https://clientc.atlassian.net', jiraEmail:'service@clientc.com',
+    status:'ACTIVE', lastImport:'13/01/2026 02h05', importStatus:'error',
+    groupingType:'EPIC', tempo:false, spRatio:null,
+    projects:[
+      {key:'DELTA', name:'Équipe DELTA', type:'CLASSIC', status:'ACTIVE'},
+    ]
+  },
+  {
+    id:4, name:'Client D', jiraUrl:'https://clientd.atlassian.net', jiraEmail:'service@clientd.com',
+    status:'ACTIVE', lastImport:'15/01/2026 02h22', importStatus:'ok',
+    groupingType:'EPIC', tempo:false, spRatio:null,
+    projects:[
+      {key:'EPS', name:'Équipe EPS', type:'CLASSIC', status:'ACTIVE'},
+    ]
+  },
+  {
+    id:5, name:'Client E (Archivé)', jiraUrl:'https://cliente.atlassian.net', jiraEmail:'service@cliente.com',
+    status:'ARCHIVED', lastImport:'01/09/2025', importStatus:'ok',
+    groupingType:'EPIC', tempo:false, spRatio:null, projects:[]
+  },
+];
+
+const JIRA_FIELDS_SAMPLE = [
+  {id:'summary', name:'Summary'},
+  {id:'description', name:'Description'},
+  {id:'assignee', name:'Assignee'},
+  {id:'timeoriginalestimate', name:'Original Estimate'},
+  {id:'timespent', name:'Time Spent'},
+  {id:'story_points', name:'Story Points'},
+  {id:'customfield_10016', name:'Story Points (custom)'},
+  {id:'customfield_10020', name:'Sprint'},
+  {id:'customfield_10100', name:'Chef de projet (custom)'},
+  {id:'customfield_10200', name:'IA Used (custom)'},
+];
+
+const JIRA_STATUSES_SAMPLE = ['To Do','In Progress','In Review','Done','Closed','Resolved','Cancelled'];
+
+function Sidebar() {
+  return (
+    <div className="sidebar">
+      <div className="sidebar-logo">
+        <span className="logo-icon">📊</span>
+        <div><div className="logo-text">Portail KPI</div><div className="logo-sub">DECADE</div></div>
+      </div>
+      <div className="nav-section">Navigation</div>
+      <a href="02-dashboard.html" className="nav-item"><span className="nav-icon">🏠</span> Tableau de bord</a>
+      <a href="02-dashboard.html" className="nav-item"><span className="nav-icon">👤</span> Mes KPI</a>
+      <a href="03-equipe-heatmap.html" className="nav-item"><span className="nav-icon">👥</span> Mon équipe</a>
+      <a href="#" className="nav-item"><span className="nav-icon">🏢</span> Vue clients</a>
+      <div className="nav-section">Administration</div>
+      <a href="04-admin-sante.html" className="nav-item"><span className="nav-icon">🩺</span> Santé système</a>
+      <a href="05-admin-imports.html" className="nav-item"><span className="nav-icon">📥</span> Imports</a>
+      <a href="06-admin-utilisateurs.html" className="nav-item"><span className="nav-icon">🔑</span> Utilisateurs</a>
+      <a href="07-admin-client-config.html" className="nav-item active"><span className="nav-icon">⚙️</span> Config. Clients</a>
+      <a href="08-admin-kpi-config.html" className="nav-item"><span className="nav-icon">📐</span> Config. KPI</a>
+      <div className="sidebar-footer">
+        <div className="user-name">Admin DECADE</div><div>Administrateur</div>
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({ status }) {
+  if (status === 'ok')      return <span className="badge badge-green">✅ OK</span>;
+  if (status === 'warning') return <span className="badge badge-orange">⚠️ Warning</span>;
+  if (status === 'error')   return <span className="badge badge-red">❌ Erreur</span>;
+  return null;
+}
+
+function ClientConfigPage() {
+  const [showArchived, setShowArchived] = React.useState(false);
+  const [selected,     setSelected]    = React.useState(null);
+  const [tab,          setTab]         = React.useState('connexion');
+  const [testResult,   setTestResult]  = React.useState(null);
+  const [testing,      setTesting]     = React.useState(false);
+  const [addModal,     setAddModal]    = React.useState(false);
+  const [archiveModal, setArchiveModal]= React.useState(null);
+  const [doneStatuses, setDoneStatuses]= React.useState(['Done','Closed','Resolved']);
+  const [spRatioVal,   setSpRatioVal]  = React.useState('8');
+
+  const visible = CLIENTS.filter(c => showArchived || c.status !== 'ARCHIVED');
+
+  function testConnection() {
+    setTesting(true); setTestResult(null);
+    setTimeout(() => {
+      setTesting(false);
+      setTestResult(selected.importStatus === 'error'
+        ? { ok:false, msg:'401 — Token JIRA invalide. Vérifiez l\'email de service et l\'API token.' }
+        : { ok:true,  msg:'Connexion réussie. Instance JIRA accessible (3 projets trouvés).' }
+      );
+    }, 1500);
+  }
+
+  const TAB_STYLE = (t) => ({
+    padding:'8px 16px', cursor:'pointer', borderBottom: tab === t ? '2px solid #1677ff' : '2px solid transparent',
+    color: tab === t ? '#1677ff' : '#595959', fontWeight: tab === t ? 600 : 400,
+    fontSize:13, background:'none', border:'none', borderBottom: tab===t ? '2px solid #1677ff' : '2px solid transparent',
+  });
+
+  return (
+    <div style={{display:'flex'}}>
+      <Sidebar />
+      <div style={{flex:1}}>
+        <div className="header">
+          <div className="breadcrumb">
+            <a href="#">Administration</a><span className="sep">/</span>
+            <span className="current">Configuration Clients</span>
+          </div>
+          <div className="header-right">
+            <span className="sync-info">⏱ Actualisé à 14:32</span>
+            <button className="bell-btn">🔔 <span className="bell-badge">2</span></button>
+            <div className="user-avatar" style={{background:'linear-gradient(135deg,#ff4d4f,#fa8c16)'}}>AD</div>
+            <span className="user-name-header">Admin ▾</span>
+          </div>
+        </div>
+
+        <div className="content">
+          <div className="page-title">⚙️ Configuration Clients JIRA</div>
+          <div className="page-subtitle">Connexions, mapping des champs, projets et paramètres KPI</div>
+
+          <div style={{display:'grid', gridTemplateColumns:'280px 1fr', gap:16, marginTop:0}}>
+            {/* Liste clients */}
+            <div className="section-card" style={{padding:0, overflow:'hidden'}}>
+              <div style={{padding:'12px 16px', borderBottom:'1px solid #f0f0f0', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                <span style={{fontWeight:600, fontSize:14}}>Clients ({visible.length})</span>
+                <button className="btn btn-primary btn-sm" onClick={()=>setAddModal(true)}>+ Ajouter</button>
+              </div>
+              <div style={{padding:'8px 0'}}>
+                {visible.map(c => (
+                  <div key={c.id}
+                    onClick={()=>{ setSelected(c); setTab('connexion'); setTestResult(null); }}
+                    style={{
+                      padding:'10px 16px', cursor:'pointer', display:'flex', alignItems:'center', gap:10,
+                      background: selected?.id === c.id ? '#e6f4ff' : 'transparent',
+                      borderLeft: selected?.id === c.id ? '3px solid #1677ff' : '3px solid transparent',
+                    }}>
+                    <span style={{fontSize:20}}>{c.status === 'ARCHIVED' ? '🗄' : '🏢'}</span>
+                    <div style={{flex:1, minWidth:0}}>
+                      <div style={{fontWeight:500, fontSize:13, opacity: c.status==='ARCHIVED'?0.5:1}}>{c.name}</div>
+                      <div style={{fontSize:11, color:'#8c8c8c'}}>{c.jiraUrl.replace('https://','').replace('.atlassian.net','')}</div>
+                    </div>
+                    {c.status !== 'ARCHIVED' && <StatusBadge status={c.importStatus} />}
+                  </div>
+                ))}
+              </div>
+              <div style={{padding:'10px 16px', borderTop:'1px solid #f0f0f0'}}>
+                <label style={{fontSize:12, color:'#8c8c8c', display:'flex', alignItems:'center', gap:6, cursor:'pointer'}}>
+                  <input type="checkbox" checked={showArchived} onChange={e=>setShowArchived(e.target.checked)} />
+                  Afficher les clients archivés
+                </label>
+              </div>
+            </div>
+
+            {/* Panneau de config */}
+            {!selected ? (
+              <div className="section-card" style={{display:'flex', alignItems:'center', justifyContent:'center', minHeight:300, color:'#8c8c8c', fontSize:14}}>
+                ← Sélectionnez un client pour voir sa configuration
+              </div>
+            ) : (
+              <div className="section-card" style={{padding:0, overflow:'hidden'}}>
+                <div style={{padding:'12px 20px', borderBottom:'1px solid #f0f0f0', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                  <div>
+                    <span style={{fontWeight:700, fontSize:16}}>{selected.name}</span>
+                    {selected.status === 'ARCHIVED' && <span className="badge badge-gray" style={{marginLeft:8}}>Archivé</span>}
+                  </div>
+                  <div style={{display:'flex', gap:8}}>
+                    {selected.status !== 'ARCHIVED' && (
+                      <button className="btn btn-default btn-sm" style={{color:'#ff7a00'}} onClick={()=>setArchiveModal(selected)}>
+                        🗄 Archiver ce client
+                      </button>
+                    )}
+                    {selected.status === 'ARCHIVED' && (
+                      <button className="btn btn-default btn-sm" style={{color:'#52c41a'}}>↺ Réactiver</button>
+                    )}
+                    <button className="btn btn-primary btn-sm" onClick={()=>setSelected(null)}>✓ Sauvegarder</button>
+                  </div>
+                </div>
+
+                {/* Tabs */}
+                <div style={{display:'flex', padding:'0 20px', borderBottom:'1px solid #f0f0f0', gap:4}}>
+                  {[['connexion','🔌 Connexion'],['mapping','🗂 Mapping champs'],['projets','📁 Projets'],['schedule','🕐 Planification']].map(([t,l]) => (
+                    <button key={t} style={TAB_STYLE(t)} onClick={()=>setTab(t)}>{l}</button>
+                  ))}
+                </div>
+
+                <div style={{padding:'20px'}}>
+
+                  {/* TAB CONNEXION */}
+                  {tab === 'connexion' && (
+                    <div style={{display:'flex', flexDirection:'column', gap:16}}>
+                      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+                        <div>
+                          <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>Nom du client *</label>
+                          <input defaultValue={selected.name} style={{width:'100%', padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}} />
+                        </div>
+                        <div>
+                          <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>URL JIRA Cloud *</label>
+                          <input defaultValue={selected.jiraUrl} style={{width:'100%', padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13, fontFamily:'monospace'}} />
+                        </div>
+                      </div>
+                      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+                        <div>
+                          <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>Email de service *</label>
+                          <input defaultValue={selected.jiraEmail} style={{width:'100%', padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}} />
+                        </div>
+                        <div>
+                          <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>API Token JIRA *</label>
+                          <input type="password" defaultValue="••••••••••••••••••" style={{width:'100%', padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}} />
+                          <div style={{fontSize:11, color:'#8c8c8c', marginTop:2}}>Stocké dans AWS Secrets Manager</div>
+                        </div>
+                      </div>
+                      <div style={{display:'flex', alignItems:'center', gap:16, padding:'12px', background:'#fafafa', borderRadius:8, border:'1px solid #f0f0f0'}}>
+                        <label style={{fontSize:13, display:'flex', alignItems:'center', gap:8}}>
+                          <input type="checkbox" defaultChecked={selected.tempo} />
+                          <strong>Activer Tempo Cloud</strong>
+                        </label>
+                        {selected.tempo && (
+                          <div style={{flex:1}}>
+                            <input type="password" defaultValue="••••••••••••••••••" placeholder="Token Tempo Cloud" style={{width:'100%', padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}} />
+                          </div>
+                        )}
+                      </div>
+                      {selected.importStatus === 'error' && (
+                        <div className="alert-banner error" style={{margin:0}}>
+                          <span className="alert-icon">❌</span>
+                          <div><strong>Token invalide (401)</strong><br/>
+                          <span style={{fontSize:12}}>Dernière tentative le 13/01 à 02h05. Les imports sont suspendus.</span></div>
+                        </div>
+                      )}
+                      <div style={{display:'flex', alignItems:'center', gap:12}}>
+                        <button className="btn btn-default" onClick={testConnection} disabled={testing}>
+                          {testing ? '⏳ Test en cours…' : '🔌 Tester la connexion'}
+                        </button>
+                        {testResult && (
+                          <span style={{fontSize:13, color: testResult.ok ? '#52c41a' : '#ff4d4f'}}>
+                            {testResult.ok ? '✅ ' : '❌ '}{testResult.msg}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB MAPPING */}
+                  {tab === 'mapping' && (
+                    <div style={{display:'flex', flexDirection:'column', gap:16}}>
+                      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+                        <div>
+                          <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>Champ "Estimation initiale"</label>
+                          <select defaultValue="timeoriginalestimate" style={{width:'100%', padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}}>
+                            {JIRA_FIELDS_SAMPLE.map(f=><option key={f.id} value={f.id}>{f.name} ({f.id})</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>Unité d'estimation</label>
+                          <select defaultValue={selected.spRatio ? 'SP' : 'HEURES'} style={{width:'100%', padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}}>
+                            <option value="HEURES">Heures (secondes JIRA)</option>
+                            <option value="SP">Story Points</option>
+                          </select>
+                        </div>
+                      </div>
+                      {selected.tempo && (
+                        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+                          <div>
+                            <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>Ratio SP → Heures</label>
+                            <div style={{display:'flex', alignItems:'center', gap:8}}>
+                              <input type="number" value={spRatioVal} onChange={e=>setSpRatioVal(e.target.value)} style={{width:80, padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}} />
+                              <span style={{fontSize:13, color:'#595959'}}>heures / point</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+                        <div>
+                          <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>Champ "Chef de projet" (sur Epic)</label>
+                          <select defaultValue="customfield_10100" style={{width:'100%', padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}}>
+                            <option value="">— Non configuré —</option>
+                            {JIRA_FIELDS_SAMPLE.map(f=><option key={f.id} value={f.id}>{f.name} ({f.id})</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>Niveau de regroupement (Epic / Composant…)</label>
+                          <select defaultValue={selected.groupingType} style={{width:'100%', padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}}>
+                            <option value="EPIC">Epic</option>
+                            <option value="COMPONENT">Composant</option>
+                            <option value="LABEL">Label</option>
+                            <option value="FIX_VERSION">Fix Version</option>
+                            <option value="CUSTOM_FIELD">Champ personnalisé</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>Statuts considérés comme "Terminé"</label>
+                        <div style={{display:'flex', flexWrap:'wrap', gap:6}}>
+                          {JIRA_STATUSES_SAMPLE.map(s => {
+                            const active = doneStatuses.includes(s);
+                            return (
+                              <span key={s}
+                                onClick={()=>setDoneStatuses(prev => active ? prev.filter(x=>x!==s) : [...prev,s])}
+                                className={`badge ${active ? 'badge-green' : 'badge-gray'}`}
+                                style={{cursor:'pointer', fontSize:12}}>
+                                {active ? '✓ ' : '+ '}{s}
+                              </span>
+                            );
+                          })}
+                        </div>
+                        <div style={{fontSize:11, color:'#8c8c8c', marginTop:4}}>Cliquez pour sélectionner / désélectionner un statut</div>
+                      </div>
+                      <div>
+                        <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>Type de lien JIRA pour les retours (KPI Qualité)</label>
+                        <input defaultValue="is caused by" style={{width:300, padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}} />
+                        <div style={{fontSize:11, color:'#8c8c8c', marginTop:2}}>Nom exact du type de lien JIRA (sensible à la casse)</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB PROJETS */}
+                  {tab === 'projets' && (
+                    <div>
+                      <div style={{display:'flex', justifyContent:'space-between', marginBottom:12}}>
+                        <span style={{fontSize:14, color:'#595959'}}>{selected.projects.length} projet(s) JIRA synchronisé(s)</span>
+                        <button className="btn btn-default btn-sm">+ Ajouter un projet</button>
+                      </div>
+                      <table className="data-table">
+                        <thead>
+                          <tr><th>Clé</th><th>Nom</th><th>Type</th><th>Statut</th><th>Actions</th></tr>
+                        </thead>
+                        <tbody>
+                          {selected.projects.map((p,i) => (
+                            <tr key={i}>
+                              <td><code style={{fontSize:12}}>{p.key}</code></td>
+                              <td style={{fontWeight:500}}>{p.name}</td>
+                              <td><span className="badge badge-blue">{p.type}</span></td>
+                              <td><span className={`badge ${p.status==='ACTIVE'?'badge-green':'badge-gray'}`}>{p.status}</span></td>
+                              <td>
+                                <button className="btn btn-default btn-sm">✏️ Modifier</button>
+                                {' '}
+                                <button className="btn btn-default btn-sm" style={{color:'#ff4d4f'}}>Archiver</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* TAB PLANIFICATION */}
+                  {tab === 'schedule' && (
+                    <div style={{display:'flex', flexDirection:'column', gap:16}}>
+                      <div style={{background:'#e6f4ff', border:'1px solid #91caff', borderRadius:8, padding:'10px 14px', fontSize:13, color:'#0958d9'}}>
+                        💡 Par défaut, les imports sont planifiés chaque nuit entre 02h00 et 04h00 (heure Paris). Vous pouvez définir une planification différente pour ce client.
+                      </div>
+                      <div>
+                        <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>Expression CRON</label>
+                        <input defaultValue="0 2 * * *" style={{width:200, padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13, fontFamily:'monospace'}} />
+                        <div style={{fontSize:11, color:'#8c8c8c', marginTop:2}}>Format : minute heure jour mois jourSemaine · Ex. : <code>0 2 * * *</code> = chaque jour à 02h00</div>
+                      </div>
+                      <div style={{display:'flex', gap:20}}>
+                        <div>
+                          <div style={{fontSize:12, color:'#595959', marginBottom:2}}>Dernier import planifié</div>
+                          <div style={{fontWeight:500}}>{selected.lastImport}</div>
+                        </div>
+                        <div>
+                          <div style={{fontSize:12, color:'#595959', marginBottom:2}}>Prochain import planifié</div>
+                          <div style={{fontWeight:500}}>16/01/2026 02h00</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Add client modal */}
+      {addModal && (
+        <div className="modal-overlay" onClick={()=>setAddModal(false)}>
+          <div className="modal" onClick={e=>e.stopPropagation()} style={{width:520}}>
+            <div className="modal-header">
+              <span>➕ Ajouter un client JIRA</span>
+              <button className="modal-close" onClick={()=>setAddModal(false)}>✕</button>
+            </div>
+            <div style={{padding:'20px 24px', display:'flex', flexDirection:'column', gap:14}}>
+              <div>
+                <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>Nom du client *</label>
+                <input style={{width:'100%', padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}} placeholder="Ex. : Client F" />
+              </div>
+              <div>
+                <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>URL JIRA Cloud *</label>
+                <input style={{width:'100%', padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13, fontFamily:'monospace'}} placeholder="https://votreclient.atlassian.net" />
+              </div>
+              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+                <div>
+                  <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>Email de service *</label>
+                  <input style={{width:'100%', padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}} placeholder="service@client.com" />
+                </div>
+                <div>
+                  <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>API Token JIRA *</label>
+                  <input type="password" style={{width:'100%', padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}} placeholder="Token JIRA" />
+                </div>
+              </div>
+              <div style={{background:'#f5f5f5', borderRadius:8, padding:'10px', fontSize:12, color:'#595959'}}>
+                ℹ️ Le token sera chiffré et stocké dans AWS Secrets Manager. Il ne sera jamais affiché en clair.
+              </div>
+            </div>
+            <div style={{padding:'12px 24px', borderTop:'1px solid #f0f0f0', display:'flex', justifyContent:'flex-end', gap:8}}>
+              <button className="btn btn-default" onClick={()=>setAddModal(false)}>Annuler</button>
+              <button className="btn btn-primary" onClick={()=>setAddModal(false)}>Créer le client</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Archive client modal */}
+      {archiveModal && (
+        <div className="modal-overlay" onClick={()=>setArchiveModal(null)}>
+          <div className="modal" onClick={e=>e.stopPropagation()} style={{width:460}}>
+            <div className="modal-header">
+              <span>🗄 Archiver le client — {archiveModal.name}</span>
+              <button className="modal-close" onClick={()=>setArchiveModal(null)}>✕</button>
+            </div>
+            <div style={{padding:'20px 24px'}}>
+              <div className="alert-banner warning" style={{margin:'0 0 16px'}}>
+                <span className="alert-icon">⚠️</span>
+                <div>
+                  <strong>Cette action va stopper tous les imports planifiés pour ce client.</strong><br/>
+                  <span style={{fontSize:12}}>Les données historiques (tickets, KPI, worklogs) seront conservées et consultables.</span>
+                </div>
+              </div>
+              <div>
+                <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>Motif d'archivage (optionnel)</label>
+                <input style={{width:'100%', padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}} placeholder="Ex. : Fin de contrat, migration vers autre outil…" />
+              </div>
+            </div>
+            <div style={{padding:'12px 24px', borderTop:'1px solid #f0f0f0', display:'flex', justifyContent:'flex-end', gap:8}}>
+              <button className="btn btn-default" onClick={()=>setArchiveModal(null)}>Annuler</button>
+              <button className="btn btn-primary" style={{background:'#fa8c16', borderColor:'#fa8c16'}} onClick={()=>setArchiveModal(null)}>
+                Confirmer l'archivage
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.render(<ClientConfigPage />, document.getElementById('root'));
+</script>
+</body>
+</html>

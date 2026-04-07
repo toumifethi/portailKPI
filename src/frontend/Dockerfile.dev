@@ -1,0 +1,14 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Installer les dépendances (layer mis en cache)
+COPY package.json ./
+RUN npm install
+
+# Copier les configs (src/ est monté en volume)
+COPY tsconfig.json tsconfig.node.json ./
+
+# Le code src/ et vite.config.ts sont montés en volume → hot-reload Vite
+EXPOSE 5173
+CMD ["npm", "run", "dev"]

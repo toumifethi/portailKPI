@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Config. KPI — Portail KPI</title>
+  <link rel="stylesheet" href="_layout.css">
+  <script src="https://unpkg.com/react@17/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/chart.js@3/dist/chart.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+const KPI_CATALOG = [
+  {
+    id:1, name:'Respect des charges', icon:'📏', formulaType:'PREDEFINED', predefinedType:'RATIO_ESTIME_CONSOMME',
+    isSystem:true, description:'Écart entre le temps consommé et l\'estimation initiale.',
+    clients:[
+      {id:1, name:'Client A', active:true,  thresholds:{green:10, orange:20}, override:{done_statuses:['Done','Closed'], included_types:['Story','Bug']}},
+      {id:2, name:'Client B', active:true,  thresholds:{green:15, orange:25}, override:{}},
+      {id:3, name:'Client C', active:false, thresholds:{}, override:{}},
+      {id:4, name:'Client D', active:true,  thresholds:{green:10, orange:20}, override:{}},
+    ]
+  },
+  {
+    id:2, name:'Qualité (retours)', icon:'🎯', formulaType:'PREDEFINED', predefinedType:'RATIO_RETOURS',
+    isSystem:true, description:'Part du temps consacré aux corrections de retours.',
+    clients:[
+      {id:1, name:'Client A', active:true,  thresholds:{green:5, orange:15}, override:{}},
+      {id:2, name:'Client B', active:true,  thresholds:{green:5, orange:15}, override:{}},
+      {id:3, name:'Client C', active:false, thresholds:{}, override:{}},
+      {id:4, name:'Client D', active:false, thresholds:{}, override:{}},
+    ]
+  },
+  {
+    id:3, name:'Tickets sans estimation', icon:'❓', formulaType:'PREDEFINED', predefinedType:'COUNT_WITHOUT_ESTIMATE',
+    isSystem:true, description:'Nombre de tickets "en cours" sans estimation initiale.',
+    clients:[
+      {id:1, name:'Client A', active:true,  thresholds:{green:3, orange:8}, override:{in_progress_statuses:['In Progress','In Review']}},
+      {id:2, name:'Client B', active:true,  thresholds:{green:5, orange:10}, override:{}},
+      {id:3, name:'Client C', active:false, thresholds:{}, override:{}},
+      {id:4, name:'Client D', active:false, thresholds:{}, override:{}},
+    ]
+  },
+  {
+    id:4, name:'Tickets développés avec IA', icon:'🤖', formulaType:'PREDEFINED', predefinedType:'COUNT_WITH_AI',
+    isSystem:true, description:'Pourcentage de tickets terminés avec assistance IA (champ JIRA personnalisé).',
+    clients:[
+      {id:1, name:'Client A', active:true,  thresholds:{green:30, orange:10}, override:{ai_field_id:'customfield_10200', ai_field_rules:[{value:'Oui',rule:'COMPTE_COMME_IA'},{value:'Partiel',rule:'COMPTE_COMME_IA'},{value:'Non',rule:'NON_IA'},{value:null,rule:'NON_IA'}]}},
+      {id:2, name:'Client B', active:false, thresholds:{}, override:{}, disabled_reason:'Champ IA non trouvé dans cette instance JIRA'},
+      {id:3, name:'Client C', active:false, thresholds:{}, override:{}},
+      {id:4, name:'Client D', active:false, thresholds:{}, override:{}},
+    ]
+  },
+  {
+    id:5, name:'KPI Personnalisé (JQL)', icon:'🔍', formulaType:'JQL', predefinedType:null,
+    isSystem:false, description:'Tickets bloqués en validation depuis > 5 jours.',
+    clients:[
+      {id:1, name:'Client A', active:true, thresholds:{green:3, orange:7}, override:{}},
+    ]
+  },
+];
+
+const AI_RULE_LABELS = { COMPTE_COMME_IA:'Compte comme IA', NON_IA:'Non IA', EXCLUT:'Exclure du calcul' };
+
+function Sidebar() {
+  return (
+    <div className="sidebar">
+      <div className="sidebar-logo">
+        <span className="logo-icon">📊</span>
+        <div><div className="logo-text">Portail KPI</div><div className="logo-sub">DECADE</div></div>
+      </div>
+      <div className="nav-section">Navigation</div>
+      <a href="02-dashboard.html" className="nav-item"><span className="nav-icon">🏠</span> Tableau de bord</a>
+      <a href="02-dashboard.html" className="nav-item"><span className="nav-icon">👤</span> Mes KPI</a>
+      <a href="03-equipe-heatmap.html" className="nav-item"><span className="nav-icon">👥</span> Mon équipe</a>
+      <a href="#" className="nav-item"><span className="nav-icon">🏢</span> Vue clients</a>
+      <div className="nav-section">Administration</div>
+      <a href="04-admin-sante.html" className="nav-item"><span className="nav-icon">🩺</span> Santé système</a>
+      <a href="05-admin-imports.html" className="nav-item"><span className="nav-icon">📥</span> Imports</a>
+      <a href="06-admin-utilisateurs.html" className="nav-item"><span className="nav-icon">🔑</span> Utilisateurs</a>
+      <a href="07-admin-client-config.html" className="nav-item"><span className="nav-icon">⚙️</span> Config. Clients</a>
+      <a href="08-admin-kpi-config.html" className="nav-item active"><span className="nav-icon">📐</span> Config. KPI</a>
+      <div className="sidebar-footer">
+        <div className="user-name">Admin DECADE</div><div>Administrateur</div>
+      </div>
+    </div>
+  );
+}
+
+function FormulaTypeBadge({ type, predefined }) {
+  if (type === 'PREDEFINED') return <span className="badge badge-blue">Prédéfinie</span>;
+  if (type === 'JQL')        return <span className="badge badge-orange">JQL</span>;
+  if (type === 'SQL')        return <span className="badge" style={{background:'#f9f0ff',color:'#531dab'}}>SQL</span>;
+  return null;
+}
+
+function KpiConfigPage() {
+  const [selected,  setSelected]  = React.useState(null);
+  const [clientTab, setClientTab] = React.useState(null);
+  const [createModal, setCreateModal] = React.useState(false);
+  const [createType,  setCreateType]  = React.useState('PREDEFINED');
+  const [aiRules, setAiRules] = React.useState([
+    {value:'Oui',    rule:'COMPTE_COMME_IA'},
+    {value:'Partiel',rule:'COMPTE_COMME_IA'},
+    {value:'Non',    rule:'NON_IA'},
+    {value:null,     rule:'NON_IA'},
+  ]);
+
+  function handleSelectKpi(kpi) {
+    setSelected(kpi);
+    setClientTab(kpi.clients[0]);
+  }
+
+  const RULE_OPTIONS = ['COMPTE_COMME_IA','NON_IA','EXCLUT'];
+
+  return (
+    <div style={{display:'flex'}}>
+      <Sidebar />
+      <div style={{flex:1}}>
+        <div className="header">
+          <div className="breadcrumb">
+            <a href="#">Administration</a><span className="sep">/</span>
+            <span className="current">Configuration KPI</span>
+          </div>
+          <div className="header-right">
+            <span className="sync-info">⏱ Actualisé à 14:32</span>
+            <button className="bell-btn">🔔 <span className="bell-badge">2</span></button>
+            <div className="user-avatar" style={{background:'linear-gradient(135deg,#ff4d4f,#fa8c16)'}}>AD</div>
+            <span className="user-name-header">Admin ▾</span>
+          </div>
+        </div>
+
+        <div className="content">
+          <div className="page-title">📐 Configuration des KPI</div>
+          <div className="page-subtitle">Catalogue des KPI, activation par client et paramétrage des seuils</div>
+
+          <div style={{display:'grid', gridTemplateColumns:'300px 1fr', gap:16}}>
+
+            {/* Catalogue */}
+            <div className="section-card" style={{padding:0, overflow:'hidden'}}>
+              <div style={{padding:'12px 16px', borderBottom:'1px solid #f0f0f0', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                <span style={{fontWeight:600, fontSize:14}}>Catalogue KPI ({KPI_CATALOG.length})</span>
+                <button className="btn btn-primary btn-sm" onClick={()=>setCreateModal(true)}>+ Nouveau KPI</button>
+              </div>
+              {KPI_CATALOG.map(kpi => (
+                <div key={kpi.id}
+                  onClick={()=>handleSelectKpi(kpi)}
+                  style={{
+                    padding:'12px 16px', cursor:'pointer', borderBottom:'1px solid #f5f5f5',
+                    background: selected?.id === kpi.id ? '#e6f4ff' : 'transparent',
+                    borderLeft: selected?.id === kpi.id ? '3px solid #1677ff' : '3px solid transparent',
+                  }}>
+                  <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:4}}>
+                    <span style={{fontSize:18}}>{kpi.icon}</span>
+                    <span style={{fontWeight:500, fontSize:13}}>{kpi.name}</span>
+                    {kpi.isSystem && <span style={{fontSize:10, color:'#8c8c8c', marginLeft:'auto'}}>Système</span>}
+                  </div>
+                  <div style={{display:'flex', gap:6, marginLeft:26}}>
+                    <FormulaTypeBadge type={kpi.formulaType} />
+                    <span style={{fontSize:11, color:'#8c8c8c'}}>
+                      {kpi.clients.filter(c=>c.active).length}/{kpi.clients.length} clients actifs
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Panneau détail */}
+            {!selected ? (
+              <div className="section-card" style={{display:'flex', alignItems:'center', justifyContent:'center', minHeight:300, color:'#8c8c8c', fontSize:14}}>
+                ← Sélectionnez un KPI pour le configurer
+              </div>
+            ) : (
+              <div className="section-card" style={{padding:0, overflow:'hidden'}}>
+                <div style={{padding:'14px 20px', borderBottom:'1px solid #f0f0f0', display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+                  <div>
+                    <div style={{display:'flex', alignItems:'center', gap:8}}>
+                      <span style={{fontSize:22}}>{selected.icon}</span>
+                      <span style={{fontWeight:700, fontSize:16}}>{selected.name}</span>
+                      <FormulaTypeBadge type={selected.formulaType} />
+                    </div>
+                    <div style={{fontSize:13, color:'#595959', marginTop:4, marginLeft:30}}>{selected.description}</div>
+                  </div>
+                  {!selected.isSystem && (
+                    <div style={{display:'flex', gap:8}}>
+                      <button className="btn btn-default btn-sm">✏️ Modifier</button>
+                      <button className="btn btn-default btn-sm" style={{color:'#ff4d4f'}}>🗑 Supprimer</button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Sous-onglets : un par client */}
+                <div style={{padding:'0 20px', borderBottom:'1px solid #f0f0f0', display:'flex', gap:0, overflowX:'auto'}}>
+                  {selected.clients.map(c => (
+                    <button key={c.id} onClick={()=>setClientTab(c)} style={{
+                      padding:'8px 14px', cursor:'pointer', whiteSpace:'nowrap',
+                      borderBottom: clientTab?.id === c.id ? '2px solid #1677ff' : '2px solid transparent',
+                      color: clientTab?.id === c.id ? '#1677ff' : '#595959',
+                      fontWeight: clientTab?.id === c.id ? 600 : 400,
+                      fontSize:13, background:'none', border:'none',
+                      borderBottom: clientTab?.id === c.id ? '2px solid #1677ff' : '2px solid transparent',
+                    }}>
+                      {c.name}
+                      {' '}
+                      {c.active
+                        ? <span style={{fontSize:10, color:'#52c41a'}}>●</span>
+                        : <span style={{fontSize:10, color:'#d9d9d9'}}>●</span>
+                      }
+                    </button>
+                  ))}
+                </div>
+
+                {clientTab && (
+                  <div style={{padding:'20px'}}>
+                    {/* Activation */}
+                    <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16, padding:'10px 14px', background:'#fafafa', borderRadius:8, border:'1px solid #f0f0f0'}}>
+                      <div>
+                        <strong style={{fontSize:14}}>KPI {clientTab.active ? 'activé' : 'désactivé'} pour {clientTab.name}</strong>
+                        {clientTab.disabled_reason && (
+                          <div style={{fontSize:12, color:'#fa8c16', marginTop:2}}>⚠️ {clientTab.disabled_reason}</div>
+                        )}
+                      </div>
+                      <label style={{display:'flex', alignItems:'center', gap:8, cursor:'pointer'}}>
+                        <input type="checkbox" defaultChecked={clientTab.active} disabled={!!clientTab.disabled_reason} />
+                        <span style={{fontSize:13}}>{clientTab.active ? 'Actif' : 'Inactif'}</span>
+                      </label>
+                    </div>
+
+                    {clientTab.active && (
+                      <>
+                        {/* Seuils */}
+                        <div style={{marginBottom:20}}>
+                          <div style={{fontWeight:600, fontSize:13, marginBottom:10}}>🎛 Seuils d'alerte</div>
+                          <div style={{display:'flex', gap:12, alignItems:'center', flexWrap:'wrap'}}>
+                            <div style={{display:'flex', alignItems:'center', gap:8}}>
+                              <span className="badge badge-green" style={{minWidth:60, textAlign:'center'}}>🟢 Vert</span>
+                              <span style={{fontSize:13, color:'#595959'}}>Valeur &lt;</span>
+                              <input type="number" defaultValue={clientTab.thresholds.green} style={{width:70, padding:'5px 8px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}} />
+                              <span style={{fontSize:13, color:'#595959'}}>%</span>
+                            </div>
+                            <div style={{display:'flex', alignItems:'center', gap:8}}>
+                              <span className="badge badge-orange" style={{minWidth:60, textAlign:'center'}}>🟡 Orange</span>
+                              <span style={{fontSize:13, color:'#595959'}}>Valeur &lt;</span>
+                              <input type="number" defaultValue={clientTab.thresholds.orange} style={{width:70, padding:'5px 8px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}} />
+                              <span style={{fontSize:13, color:'#595959'}}>%</span>
+                            </div>
+                            <div style={{display:'flex', alignItems:'center', gap:8}}>
+                              <span className="badge badge-red" style={{minWidth:60, textAlign:'center'}}>🔴 Rouge</span>
+                              <span style={{fontSize:13, color:'#595959'}}>Au-delà</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Config spécifique RATIO_RETOURS */}
+                        {selected.predefinedType === 'RATIO_RETOURS' && (
+                          <div style={{marginBottom:20}}>
+                            <div style={{fontWeight:600, fontSize:13, marginBottom:10}}>⚙️ Paramètres — KPI Qualité (retours)</div>
+
+                            {/* Imputation des retours */}
+                            <div style={{marginBottom:14, padding:'12px 14px', background:'#e6f4ff', border:'1px solid #91caff', borderRadius:8}}>
+                              <div style={{fontWeight:600, fontSize:12, color:'#0958d9', marginBottom:8}}>
+                                👤 Rattachement des retours au développeur initial
+                              </div>
+                              <p style={{fontSize:12, color:'#0958d9', marginBottom:10, lineHeight:1.6}}>
+                                Lorsqu'un retour est traité par un développeur différent de celui qui a réalisé le ticket initial,
+                                le temps est tout de même imputé au développeur <strong>du ticket principal</strong>.
+                                Sélectionnez ci-dessous le champ JIRA à lire sur le ticket principal pour identifier ce développeur initial.
+                              </p>
+                              <div style={{display:'flex', gap:12, alignItems:'flex-end', flexWrap:'wrap'}}>
+                                <div style={{flex:'0 0 auto'}}>
+                                  <label style={{fontSize:12, color:'#0958d9', display:'block', marginBottom:4}}>Champ d'imputation (ticket principal)</label>
+                                  <select defaultValue="assignee" style={{padding:'6px 10px', border:'1px solid #91caff', borderRadius:6, fontSize:13, background:'#fff', minWidth:280}}>
+                                    <option value="assignee">assignee — Assigné courant (défaut)</option>
+                                    {['customfield_10100','customfield_10200','customfield_10300','customfield_10400'].map(f=>(
+                                      <option key={f} value={f}>{f} — Champ personnalisé</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <button className="btn btn-default btn-sm">📋 Charger les champs JIRA…</button>
+                              </div>
+                              <div style={{fontSize:11, color:'#0958d9', marginTop:8, opacity:0.8}}>
+                                ℹ️ Si le champ est absent ou vide sur le ticket principal → fallback sur l'assigné courant du ticket principal.
+                                Si toujours absent → retour exclu du calcul et signalé dans les logs d'import.
+                              </div>
+                            </div>
+
+                            {/* Types de retours */}
+                            <div style={{marginBottom:12}}>
+                              <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:6}}>Types de tickets considérés comme "Retour interne"</label>
+                              <div style={{display:'flex', flexWrap:'wrap', gap:6}}>
+                                {['Retour Intégration','Retour TU','Defect Internal'].map(t=>{
+                                  const active = t === 'Retour Intégration';
+                                  return <span key={t} className={`badge ${active?'badge-blue':'badge-gray'}`} style={{cursor:'pointer',fontSize:12}}>{active?'✓ ':'+ '}{t}</span>;
+                                })}
+                              </div>
+                            </div>
+                            <div>
+                              <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:6}}>Types de tickets considérés comme "Retour client"</label>
+                              <div style={{display:'flex', flexWrap:'wrap', gap:6}}>
+                                {['Retour Recette','Bug Client','Defect External'].map(t=>{
+                                  const active = t === 'Retour Recette';
+                                  return <span key={t} className={`badge ${active?'badge-orange':'badge-gray'}`} style={{cursor:'pointer',fontSize:12}}>{active?'✓ ':'+ '}{t}</span>;
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Config spécifique COUNT_WITHOUT_ESTIMATE */}
+                        {selected.predefinedType === 'COUNT_WITHOUT_ESTIMATE' && (
+                          <div style={{marginBottom:20}}>
+                            <div style={{fontWeight:600, fontSize:13, marginBottom:10}}>⚙️ Paramètres — Tickets sans estimation</div>
+                            <div>
+                              <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:6}}>Statuts considérés comme "En cours" pour ce KPI</label>
+                              <div style={{display:'flex', flexWrap:'wrap', gap:6}}>
+                                {['To Do','In Progress','In Review','In Development','Waiting Review'].map(s => {
+                                  const active = ['In Progress','In Review'].includes(s);
+                                  return (
+                                    <span key={s} className={`badge ${active ? 'badge-blue' : 'badge-gray'}`} style={{cursor:'pointer', fontSize:12}}>
+                                      {active ? '✓ ' : '+ '}{s}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                              <div style={{fontSize:11, color:'#8c8c8c', marginTop:4}}>Statuts JIRA récupérés depuis l'instance {clientTab.name}</div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Config spécifique COUNT_WITH_AI */}
+                        {selected.predefinedType === 'COUNT_WITH_AI' && (
+                          <div style={{marginBottom:20}}>
+                            <div style={{fontWeight:600, fontSize:13, marginBottom:10}}>🤖 Paramètres — Tickets avec IA</div>
+                            <div style={{marginBottom:14}}>
+                              <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>Champ JIRA personnalisé portant l'information IA</label>
+                              <div style={{display:'flex', gap:8, alignItems:'center'}}>
+                                <input defaultValue="customfield_10200" style={{width:220, padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13, fontFamily:'monospace'}} placeholder="customfield_XXXXX" />
+                                <span style={{fontSize:12, color:'#8c8c8c'}}>→</span>
+                                <span style={{fontSize:13, color:'#595959'}}>Nom affiché : <strong>IA Used</strong></span>
+                                <button className="btn btn-default btn-sm">🔄 Détecter les valeurs</button>
+                              </div>
+                              <div style={{fontSize:11, color:'#8c8c8c', marginTop:2}}>Identifiant technique du champ JIRA (visible via /rest/api/3/field)</div>
+                            </div>
+                            <div>
+                              <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:6}}>Règles de comptage par valeur du champ</label>
+                              <table className="data-table" style={{marginBottom:8}}>
+                                <thead>
+                                  <tr>
+                                    <th>Valeur du champ IA</th>
+                                    <th>Règle de comptage</th>
+                                    <th></th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {aiRules.map((r, i) => (
+                                    <tr key={i}>
+                                      <td>
+                                        <code style={{fontSize:12, background:'#f5f5f5', padding:'2px 6px', borderRadius:4}}>
+                                          {r.value === null ? '(vide)' : r.value}
+                                        </code>
+                                      </td>
+                                      <td>
+                                        <select
+                                          value={r.rule}
+                                          onChange={e=>{
+                                            const newRules = [...aiRules];
+                                            newRules[i] = {...r, rule: e.target.value};
+                                            setAiRules(newRules);
+                                          }}
+                                          style={{padding:'4px 8px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:12}}>
+                                          {RULE_OPTIONS.map(o=>(
+                                            <option key={o} value={o}>{AI_RULE_LABELS[o]}</option>
+                                          ))}
+                                        </select>
+                                      </td>
+                                      <td>
+                                        <span className={`badge ${r.rule==='COMPTE_COMME_IA'?'badge-green':r.rule==='EXCLUT'?'badge-gray':'badge-orange'}`} style={{fontSize:11}}>
+                                          {r.rule==='COMPTE_COMME_IA'?'🤖 IA':'r.rule'==='EXCLUT'?'⊘ Exclure':'— Non IA'}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                              <button className="btn btn-default btn-sm" onClick={()=>setAiRules([...aiRules,{value:'Nouvelle valeur',rule:'NON_IA'}])}>
+                                + Ajouter une valeur
+                              </button>
+                            </div>
+                            <div style={{marginTop:14, background:'#f6ffed', border:'1px solid #b7eb8f', borderRadius:8, padding:'10px 14px', fontSize:12, color:'#237804'}}>
+                              📊 Formule calculée : <strong>(tickets avec IA / total tickets terminés - exclus) × 100</strong>
+                              <br/>La valeur brute (entier) est également stockée pour le drill-down.
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Aperçu résultats */}
+                        <div style={{background:'#fafafa', borderRadius:8, border:'1px solid #f0f0f0', padding:'12px 16px'}}>
+                          <div style={{fontWeight:600, fontSize:13, marginBottom:8}}>📈 Derniers résultats calculés — {clientTab.name}</div>
+                          <div style={{display:'flex', gap:20, flexWrap:'wrap'}}>
+                            {['Oct 2025','Nov 2025','Déc 2025','Jan 2026'].map((m,i) => {
+                              const vals = [8.2, 12.4, 9.8, 6.1];
+                              const v = vals[i];
+                              const color = v < (clientTab.thresholds.green||10) ? '#52c41a' : v < (clientTab.thresholds.orange||20) ? '#fa8c16' : '#ff4d4f';
+                              return (
+                                <div key={m} style={{textAlign:'center'}}>
+                                  <div style={{fontSize:11, color:'#8c8c8c', marginBottom:2}}>{m}</div>
+                                  <div style={{fontSize:20, fontWeight:700, color}}>{v}%</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    <div style={{marginTop:16, display:'flex', justifyContent:'flex-end', gap:8}}>
+                      <button className="btn btn-default btn-sm">Dupliquer vers…</button>
+                      <button className="btn btn-primary btn-sm">✓ Sauvegarder la configuration</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Create KPI Modal */}
+      {createModal && (
+        <div className="modal-overlay" onClick={()=>setCreateModal(false)}>
+          <div className="modal" onClick={e=>e.stopPropagation()} style={{width:580}}>
+            <div className="modal-header">
+              <span>➕ Nouveau KPI</span>
+              <button className="modal-close" onClick={()=>setCreateModal(false)}>✕</button>
+            </div>
+            <div style={{padding:'20px 24px', display:'flex', flexDirection:'column', gap:16}}>
+              <div>
+                <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>Nom du KPI *</label>
+                <input style={{width:'100%', padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}} placeholder="Ex. : Taux de tickets réouverts" />
+              </div>
+              <div>
+                <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>Description</label>
+                <input style={{width:'100%', padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}} placeholder="Description métier" />
+              </div>
+              <div>
+                <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:8}}>Type de formule *</label>
+                <div style={{display:'flex', gap:12}}>
+                  {[['PREDEFINED','📋 Formule prédéfinie','Sélectionnez parmi les formules disponibles'],['JQL','🔍 Requête JQL','Filtrez les issues avec une requête JQL'],['SQL','🛢 Requête SQL','Calcul avancé via SQL (lecture seule)']].map(([t,l,d]) => (
+                    <div key={t}
+                      onClick={()=>setCreateType(t)}
+                      style={{
+                        flex:1, padding:'12px', borderRadius:8, cursor:'pointer', textAlign:'center',
+                        border: createType === t ? '2px solid #1677ff' : '2px solid #e8e8e8',
+                        background: createType === t ? '#e6f4ff' : '#fff',
+                      }}>
+                      <div style={{fontSize:20, marginBottom:4}}>{l.split(' ')[0]}</div>
+                      <div style={{fontWeight:600, fontSize:12}}>{l.split(' ').slice(1).join(' ')}</div>
+                      <div style={{fontSize:11, color:'#8c8c8c', marginTop:4}}>{d}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {createType === 'PREDEFINED' && (
+                <div>
+                  <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>Type de formule prédéfinie *</label>
+                  <select style={{width:'100%', padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13}}>
+                    <option value="">Sélectionner…</option>
+                    <option value="RATIO_ESTIME_CONSOMME">Écart estimation / consommé (RATIO_ESTIME_CONSOMME)</option>
+                    <option value="RATIO_RETOURS">Ratio retours / estimation (RATIO_RETOURS)</option>
+                    <option value="COUNT_BY_STATUS">Comptage par statut (COUNT_BY_STATUS)</option>
+                    <option value="COUNT_WITHOUT_ESTIMATE">Tickets sans estimation (COUNT_WITHOUT_ESTIMATE)</option>
+                    <option value="COUNT_WITH_AI">Tickets développés avec IA (COUNT_WITH_AI)</option>
+                    <option value="SUM_FIELD">Somme d'un champ numérique (SUM_FIELD)</option>
+                    <option value="AVG_FIELD">Moyenne d'un champ numérique (AVG_FIELD)</option>
+                  </select>
+                </div>
+              )}
+
+              {createType === 'JQL' && (
+                <div>
+                  <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>Requête JQL *</label>
+                  <textarea rows={3} style={{width:'100%', padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13, fontFamily:'monospace', resize:'vertical'}}
+                    placeholder={`project = "{project_key}" AND status = "Blocked" AND updated <= -5d`} />
+                  <div style={{fontSize:11, color:'#8c8c8c', marginTop:2}}>
+                    Utilisez <code>{'{project_key}'}</code> comme variable. La requête est exécutée sur les données locales.
+                  </div>
+                </div>
+              )}
+
+              {createType === 'SQL' && (
+                <div>
+                  <label style={{fontSize:12, color:'#595959', display:'block', marginBottom:4}}>Requête SQL (SELECT uniquement) *</label>
+                  <textarea rows={4} style={{width:'100%', padding:'6px 10px', border:'1px solid #d9d9d9', borderRadius:6, fontSize:13, fontFamily:'monospace', resize:'vertical'}}
+                    placeholder="SELECT COUNT(*) as value FROM issues WHERE client_id = :client_id AND status NOT IN ('Done','Closed') AND original_estimate_hours IS NULL" />
+                  <div style={{fontSize:11, color:'#fa8c16', marginTop:2}}>
+                    ⚠️ Seules les requêtes SELECT sont acceptées. INSERT/UPDATE/DELETE/DROP sont refusés.
+                  </div>
+                </div>
+              )}
+            </div>
+            <div style={{padding:'12px 24px', borderTop:'1px solid #f0f0f0', display:'flex', justifyContent:'flex-end', gap:8}}>
+              <button className="btn btn-default" onClick={()=>setCreateModal(false)}>Annuler</button>
+              <button className="btn btn-default">🔬 Tester la formule</button>
+              <button className="btn btn-primary" onClick={()=>setCreateModal(false)}>Créer le KPI</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.render(<KpiConfigPage />, document.getElementById('root'));
+</script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmd.exe /c \"node --version && npm --version\")",
+      "Bash(cmd.exe /c \"node -v 2>&1 & npm -v 2>&1 & docker -v 2>&1 & where node 2>&1\")",
+      "Bash(powershell.exe -Command \"node -v; npm -v; docker -v; docker compose version\")",
+      "Bash(powershell.exe -Command \"docker -v; docker compose version\")",
+      "Bash(powershell.exe -Command \"Get-ChildItem ''c:\\\\Users\\\\FethiTOUMI\\\\OneDrive - DECADE\\\\1PortailKPI\\\\src\\\\backend\\\\src'' -Recurse -Name\")",
+      "Bash(powershell.exe -Command \"Get-ChildItem ''c:\\\\Users\\\\FethiTOUMI\\\\OneDrive - DECADE\\\\1PortailKPI\\\\src\\\\frontend\\\\src'' -Recurse -Name\")",
+      "Bash(powershell.exe -Command \"Get-ChildItem ''c:\\\\Users\\\\FethiTOUMI\\\\OneDrive - DECADE\\\\1PortailKPI'' -Name -Depth 0\")",
+      "Bash(powershell.exe -Command \"Get-ChildItem ''c:\\\\Users\\\\FethiTOUMI\\\\OneDrive - DECADE\\\\1PortailKPI\\\\src\\\\frontend'' -Name\")",
+      "Bash(powershell.exe -Command \"Get-ChildItem ''c:\\\\Users\\\\FethiTOUMI\\\\OneDrive - DECADE\\\\1PortailKPI\\\\src\\\\backend'' -Name\")",
+      "Bash(find *)",
+      "Bash(grep *)",
+      "Bash(xargs *)",
+      "Bash(curl *)",
+      "Bash(python -c *)",
+      "Bash(curl -s http://localhost:3000/*)",
+      "Bash(curl -s \"http://localhost:3000/*\")",
+      "Bash(DATABASE_URL=\"mysql://portailkpi:password@localhost:3306/portailkpi\" npx prisma migrate dev --name add_kpi_debug_and_app_settings)",
+      "Bash(DATABASE_URL=\"mysql://portailkpi:devpassword@localhost:3306/portailkpi\" npx prisma migrate dev --name add_kpi_debug_and_app_settings)",
+      "Bash(DATABASE_URL=\"mysql://portailkpi:devpassword@localhost:3306/portailkpi\" npx prisma db push)",
+      "Bash(DATABASE_URL=\"mysql://portailkpi:devpassword@localhost:3306/portailkpi\" npx prisma db seed)",
+      "Bash(docker image:*)",
+      "Bash(python3 -m json.tool)"
+    ]
+  }
+}
