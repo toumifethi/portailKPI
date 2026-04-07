@@ -96,7 +96,7 @@ export function FormulaEditor({ value, onChange, clientId, period, section }: Fo
       <div>
         {section === 'expression' && (
           <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
-            <NodeEditor node={expression} onChange={setExpression} metrics={metrics ?? []} depth={0} />
+            <NodeEditor node={expression} onChange={setExpression} metrics={metrics ?? []} depth={0} clientId={clientId} globalJiraContext={globalJiraContext} />
           </div>
         )}
         {section === 'perimetre' && (
@@ -153,7 +153,7 @@ export function FormulaEditor({ value, onChange, clientId, period, section }: Fo
 
       {activeTab === 'formule' && (
         <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, maxHeight: '60vh', overflowY: 'auto' }}>
-          <NodeEditor node={expression} onChange={setExpression} metrics={metrics ?? []} depth={0} />
+          <NodeEditor node={expression} onChange={setExpression} metrics={metrics ?? []} depth={0} clientId={clientId} globalJiraContext={globalJiraContext} />
         </div>
       )}
       {activeTab === 'perimetre' && (
@@ -655,14 +655,42 @@ function NodeEditor({
   onChange,
   metrics,
   depth,
+  clientId,
+  globalJiraContext,
 }: {
   node: FormulaNode;
   onChange: (n: FormulaNode) => void;
   metrics: MetricInfo[];
   depth: number;
+  clientId?: number;
+  globalJiraContext?: {
+    jiraConnections: Array<{ id: number; name: string; jiraUrl: string }>;
+    selectedConnectionId?: number;
+    onConnectionChange: (jiraConnectionId: number | undefined) => void;
+  };
 }) {
+  const [showLocalFilters, setShowLocalFilters] = useState(!!node.filters);
   const bgColors = ['#ffffff', '#f8fafc', '#f1f5f9', '#e2e8f0'];
   const bg = bgColors[Math.min(depth, bgColors.length - 1)];
+
+  const hasLocalFilters = node.filters && Object.keys(node.filters).some((k) => {
+    const v = (node.filters as Record<string, unknown>)[k];
+    if (v == null) return false;
+    if (Array.isArray(v)) return v.length > 0;
+    if (typeof v === 'boolean') return v;
+    if (typeof v === 'object') return true;
+    return !!v;
+  });
+
+  const localFilterCount = !node.filters ? 0 : [
+    (node.filters.issueTypes?.length ?? 0) > 0 ? 1 : 0,
+    (node.filters.statuses?.length ?? 0) > 0 ? 1 : 0,
+    (node.filters.labels?.length ?? 0) > 0 ? 1 : 0,
+    (node.filters.components?.length ?? 0) > 0 ? 1 : 0,
+    (node.filters.customFieldFilters?.length ?? 0) > 0 ? 1 : 0,
+    node.filters.scopeRule ? 1 : 0,
+    node.filters.includeSubtasks ? 1 : 0,
+  ].reduce((a, b) => a + b, 0);
 
   return (
     <div style={{ background: bg, borderRadius: 4, padding: depth > 0 ? 4 : 0 }}>
@@ -684,19 +712,46 @@ function NodeEditor({
         </select>
 
         {node.type === 'function' && (
-          <select
-            value={node.name}
-            onChange={(e) => {
-              const fn = FUNCTIONS.find((f) => f.id === e.target.value)!;
-              const args = Array.from({ length: fn.arity }, (_, i) => node.args?.[i] ?? { type: 'metric' as const, id: 'consomme' });
-              onChange({ type: 'function', name: fn.id, args });
-            }}
-            style={selectStyle}
-          >
-            {FUNCTIONS.map((f) => (
-              <option key={f.id} value={f.id}>{f.label}</option>
-            ))}
-          </select>
+          <>
+            <select
+              value={node.name}
+              onChange={(e) => {
+                const fn = FUNCTIONS.find((f) => f.id === e.target.value)!;
+                const args = Array.from({ length: fn.arity }, (_, i) => node.args?.[i] ?? { type: 'metric' as const, id: 'consomme' });
+                onChange({ type: 'function', name: fn.id, args, ...(node.filters ? { filters: node.filters } : {}) });
+              }}
+              style={selectStyle}
+            >
+              {FUNCTIONS.map((f) => (
+                <option key={f.id} value={f.id}>{f.label}</option>
+              ))}
+            </select>
+
+            {/* Bouton filtres locaux */}
+            <button
+              onClick={() => {
+                if (showLocalFilters) {
+                  // Fermer et supprimer les filtres locaux
+                  const { filters: _removed, ...rest } = node;
+                  onChange(rest as FormulaNode);
+                  setShowLocalFilters(false);
+                } else {
+                  setShowLocalFilters(true);
+                }
+              }}
+              title={showLocalFilters ? 'Supprimer les filtres locaux (heriter du global)' : 'Ajouter des filtres specifiques a cette branche'}
+              style={{
+                padding: '1px 7px', fontSize: 11, borderRadius: 4, cursor: 'pointer',
+                border: hasLocalFilters ? '1px solid #8b5cf6' : '1px solid #d1d5db',
+                background: hasLocalFilters ? '#ede9fe' : showLocalFilters ? '#f5f3ff' : 'white',
+                color: hasLocalFilters ? '#6d28d9' : '#6b7280',
+                fontWeight: hasLocalFilters ? 700 : 400,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {hasLocalFilters ? `⚙ Filtres (${localFilterCount})` : '⚙ Filtres'}
+            </button>
+          </>
         )}
 
         {node.type === 'metric' && (
@@ -721,6 +776,29 @@ function NodeEditor({
         )}
       </div>
 
+      {/* Filtres locaux de cette branche */}
+      {node.type === 'function' && showLocalFilters && (
+        <div style={{
+          margin: '4px 0 4px 12px', padding: 8, borderRadius: 6,
+          border: '1px dashed #8b5cf6', background: '#faf5ff',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#6d28d9' }}>
+              Filtres locaux — {node.name}
+            </span>
+            <span style={{ fontSize: 10, color: '#9ca3af' }}>
+              (surcharge les filtres globaux pour cette branche)
+            </span>
+          </div>
+          <FilterCheckboxes
+            filters={node.filters ?? {}}
+            onChange={(localFilters) => onChange({ ...node, filters: localFilters })}
+            clientId={clientId}
+            globalJiraContext={globalJiraContext}
+          />
+        </div>
+      )}
+
       {/* Arguments récursifs */}
       {node.type === 'function' && node.args && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginLeft: 12, borderLeft: '2px solid #d1d5db', paddingLeft: 8 }}>
@@ -738,6 +816,8 @@ function NodeEditor({
                 }}
                 metrics={metrics}
                 depth={depth + 1}
+                clientId={clientId}
+                globalJiraContext={globalJiraContext}
               />
             </div>
           ))}

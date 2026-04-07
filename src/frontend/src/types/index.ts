@@ -448,6 +448,7 @@ export interface FormulaNode {
   id?: string;
   value?: number;
   args?: FormulaNode[];
+  filters?: FormulaFilters;
 }
 
 export interface CustomFieldFilter {

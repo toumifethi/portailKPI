@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
 import { Line } from 'react-chartjs-2';
+import { exportClientKpisToExcel } from '@/utils/excelExport';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -18,6 +18,7 @@ import type { CurrentUser } from '@/store/appStore';
 import { dashboardApi, kpiApi } from '@/api/endpoints';
 import { KpiCard } from '@/components/shared/KpiCard';
 import { ExportButton } from '@/components/shared/ExportButton';
+import { SourceIssuesModal } from '@/components/shared/SourceIssuesModal';
 import { getRagStatus } from '@/types';
 import type { DashboardKpi, RagStatus, KpiByUserRow, KpiClientConfig } from '@/types';
 
@@ -253,7 +254,9 @@ function DashboardHeader({
 // 2. KPI cards row
 // ---------------------------------------------------------------------------
 
-function KpiCardsRow({ kpis }: { kpis: DashboardKpi[] }) {
+function KpiCardsRow({ kpis, clientId, period }: { kpis: DashboardKpi[]; clientId: number; period: string }) {
+  const [issueModal, setIssueModal] = useState<{ kpiName: string } | null>(null);
+
   if (!kpis.length) {
     return (
       <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>
@@ -262,6 +265,7 @@ function KpiCardsRow({ kpis }: { kpis: DashboardKpi[] }) {
     );
   }
   return (
+    <>
     <div
       style={{
         display: 'flex',
@@ -272,10 +276,23 @@ function KpiCardsRow({ kpis }: { kpis: DashboardKpi[] }) {
     >
       {kpis.map((kpi) => (
         <div key={kpi.kpiId} style={{ minWidth: 220, flex: '1 0 220px', maxWidth: 300 }}>
-          <KpiCard kpi={kpi} />
+          <KpiCard
+            kpi={kpi}
+            onClick={kpi.ticketCount ? () => setIssueModal({ kpiName: kpi.kpiName }) : undefined}
+          />
         </div>
       ))}
     </div>
+
+    {issueModal && (
+      <SourceIssuesModal
+        clientId={clientId}
+        kpiName={issueModal.kpiName}
+        period={period}
+        onClose={() => setIssueModal(null)}
+      />
+    )}
+    </>
   );
 }
 
@@ -290,7 +307,9 @@ function TeamTable({
   clientId: number;
   period: string;
 }) {
-  const navigate = useNavigate();
+  const [issueModal, setIssueModal] = useState<{ collaboratorId: number; collaboratorName: string; kpiName: string } | null>(null);
+  const [kpiSearch, setKpiSearch] = useState('');
+  const [visibleKpiNames, setVisibleKpiNames] = useState<string[]>([]);
 
   const { data: rows, isLoading } = useQuery<KpiByUserRow[]>({
     queryKey: ['dashboard-kpis-by-user', clientId, period],
@@ -298,12 +317,34 @@ function TeamTable({
     enabled: !!clientId && !!period,
   });
 
+  const kpiNames = useMemo(
+    () => rows ? Array.from(new Set(rows.flatMap((r) => r.kpis.map((k) => k.kpiName)))) : [],
+    [rows],
+  );
+
+  // Init visible KPIs when data changes
+  React.useEffect(() => {
+    if (kpiNames.length === 0) { setVisibleKpiNames([]); return; }
+    setVisibleKpiNames((prev) => {
+      const kept = prev.filter((name) => kpiNames.includes(name));
+      return kept.length > 0 ? kept : kpiNames.slice(0, 6);
+    });
+  }, [kpiNames]);
+
+  const selectableKpiNames = useMemo(() => {
+    const q = kpiSearch.trim().toLowerCase();
+    return q ? kpiNames.filter((n) => n.toLowerCase().includes(q)) : kpiNames;
+  }, [kpiNames, kpiSearch]);
+
+  const displayedKpiNames = useMemo(
+    () => visibleKpiNames.filter((n) => kpiNames.includes(n)),
+    [visibleKpiNames, kpiNames],
+  );
+
   if (isLoading) return <div style={{ padding: 20, color: '#6b7280' }}>Chargement de l'equipe...</div>;
   if (!rows?.length) {
     return <div style={{ color: '#9ca3af', padding: 16 }}>Aucune donnee collaborateur pour cette periode.</div>;
   }
-
-  const kpiNames = Array.from(new Set(rows.flatMap((r) => r.kpis.map((k) => k.kpiName))));
 
   // Compute team averages
   const teamAverages: Record<string, { sum: number; count: number }> = {};
@@ -316,6 +357,12 @@ function TeamTable({
       }
     });
   });
+
+  function toggleVisibleKpi(name: string) {
+    setVisibleKpiNames((prev) =>
+      prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name],
+    );
+  }
 
   const thStyle: React.CSSProperties = {
     textAlign: 'center',
@@ -338,23 +385,72 @@ function TeamTable({
   };
 
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <>
+    <div style={{ background: 'white', borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+      {/* KPI filter bar */}
+      <div style={{ padding: 12, borderBottom: '1px solid #e5e7eb', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <input
+          value={kpiSearch}
+          onChange={(e) => setKpiSearch(e.target.value)}
+          placeholder="Rechercher un KPI..."
+          style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13, minWidth: 200 }}
+        />
+        <button
+          onClick={() => setVisibleKpiNames(kpiNames.slice(0, 6))}
+          style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', fontSize: 12, cursor: 'pointer', color: '#374151' }}
+        >
+          Top 6 KPI
+        </button>
+        <button
+          onClick={() => setVisibleKpiNames(kpiNames)}
+          style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', fontSize: 12, cursor: 'pointer', color: '#374151' }}
+        >
+          Tous les KPI
+        </button>
+        <span style={{ fontSize: 12, color: '#6b7280' }}>
+          {displayedKpiNames.length} KPI visible(s)
+        </span>
+      </div>
+
+      {/* KPI chips */}
+      <div style={{ padding: 12, borderBottom: '1px solid #e5e7eb', display: 'flex', gap: 6, flexWrap: 'wrap', maxHeight: 120, overflow: 'auto' }}>
+        {selectableKpiNames.map((name) => {
+          const selected = displayedKpiNames.includes(name);
+          return (
+            <button
+              key={name}
+              onClick={() => toggleVisibleKpi(name)}
+              style={{
+                border: selected ? '1px solid #60a5fa' : '1px solid #d1d5db',
+                background: selected ? '#eff6ff' : '#ffffff',
+                color: selected ? '#1d4ed8' : '#374151',
+                borderRadius: 999,
+                fontSize: 11,
+                padding: '4px 10px',
+                cursor: 'pointer',
+              }}
+            >
+              {selected ? '✓ ' : ''}{name}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Table */}
+      <div style={{ overflowX: 'auto' }}>
       <table
         style={{
           width: '100%',
           borderCollapse: 'collapse',
           background: 'white',
-          border: '1px solid #e5e7eb',
-          borderRadius: 8,
         }}
       >
         <thead>
           <tr>
             <th style={{ ...thStyle, textAlign: 'left', minWidth: 200 }}>Collaborateur</th>
-            {kpiNames.map((name) => (
+            {displayedKpiNames.map((name) => (
               <th key={name} style={thStyle}>{name}</th>
             ))}
-            <th style={{ ...thStyle, width: 90 }}></th>
           </tr>
         </thead>
         <tbody>
@@ -372,36 +468,38 @@ function TeamTable({
                   <span style={{ fontWeight: 500, color: '#111827', fontSize: 13 }}>{row.displayName}</span>
                 </div>
               </td>
-              {kpiNames.map((name) => {
+              {displayedKpiNames.map((name) => {
                 const kpi = row.kpis.find((k) => k.kpiName === name);
                 const value = kpi?.value ?? null;
                 const cellRag = kpi
                   ? getRagStatus(value, kpi as Parameters<typeof getRagStatus>[1])
                   : 'NEUTRAL';
-                const displayVal = value !== null ? `${value.toFixed(1)}${kpi?.unit ?? ''}` : '---';
+                const hasTickets = kpi && kpi.ticketCount > 0;
+                const displayVal = value !== null
+                  ? `${Math.abs(value) >= 100 ? Math.round(value) : Math.round(value * 10) / 10}${kpi?.unit === '%' ? ' %' : kpi?.unit ? ` ${kpi.unit}` : ''}`
+                  : '---';
                 return (
-                  <td key={name} style={{ ...cellBase, background: RAG_BG[cellRag] }}>
-                    {displayVal}
+                  <td
+                    key={name}
+                    style={{
+                      ...cellBase,
+                      background: RAG_BG[cellRag],
+                      borderLeft: `3px solid ${RAG_BORDER[cellRag]}`,
+                      cursor: hasTickets ? 'pointer' : 'default',
+                    }}
+                    onClick={hasTickets ? () => setIssueModal({
+                      collaboratorId: row.collaboratorId,
+                      collaboratorName: row.displayName,
+                      kpiName: name,
+                    }) : undefined}
+                    title={hasTickets ? `${kpi.ticketCount} ticket${kpi.ticketCount > 1 ? 's' : ''} — cliquer pour le detail` : undefined}
+                  >
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>
+                      {displayVal}
+                    </div>
                   </td>
                 );
               })}
-              <td style={{ ...cellBase, background: 'transparent' }}>
-                <button
-                  onClick={() => navigate(`/collaborateurs?clientId=${clientId}&period=${period}`)}
-                  style={{
-                    padding: '4px 12px',
-                    borderRadius: 6,
-                    border: '1px solid #d1d5db',
-                    background: '#fff',
-                    color: '#4f46e5',
-                    fontSize: 12,
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Voir detail
-                </button>
-              </td>
             </tr>
           ))}
 
@@ -418,7 +516,7 @@ function TeamTable({
             >
               MOYENNE EQUIPE
             </td>
-            {kpiNames.map((name) => {
+            {displayedKpiNames.map((name) => {
               const avg = teamAverages[name];
               const value = avg ? avg.sum / avg.count : null;
               // Use first row's kpi thresholds as reference
@@ -441,11 +539,24 @@ function TeamTable({
                 </td>
               );
             })}
-            <td style={{ ...cellBase, background: 'transparent' }}></td>
           </tr>
         </tbody>
       </table>
     </div>
+    </div>
+
+    {/* Modal tickets source */}
+    {issueModal && (
+      <SourceIssuesModal
+        clientId={clientId}
+        collaboratorId={issueModal.collaboratorId}
+        collaboratorName={issueModal.collaboratorName}
+        kpiName={issueModal.kpiName}
+        period={period}
+        onClose={() => setIssueModal(null)}
+      />
+    )}
+    </>
   );
 }
 
@@ -476,18 +587,22 @@ interface HeatmapData {
 
 function HeatmapSection({
   clientId,
+  clientName,
   configs,
 }: {
   clientId: number;
+  clientName: string;
   configs: KpiClientConfig[];
 }) {
   const [selectedConfigId, setSelectedConfigId] = useState<number | null>(
     configs.length > 0 ? configs[0].id : null,
   );
+  const [monthsCount, setMonthsCount] = useState(6);
+  const [issueModal, setIssueModal] = useState<{ collaboratorId: number; collaboratorName: string; kpiName: string; period: string } | null>(null);
 
   const { data: heatmap, isLoading } = useQuery<HeatmapData>({
-    queryKey: ['dashboard-heatmap-history', clientId, selectedConfigId],
-    queryFn: () => dashboardApi.getTeamHeatmapHistory(clientId, selectedConfigId!, 6),
+    queryKey: ['dashboard-heatmap-history', clientId, selectedConfigId, monthsCount],
+    queryFn: () => dashboardApi.getTeamHeatmapHistory(clientId, selectedConfigId!, monthsCount),
     enabled: !!clientId && !!selectedConfigId,
   });
 
@@ -515,13 +630,53 @@ function HeatmapSection({
     fontSize: 13,
   };
 
+  const MONTH_OPTIONS = [3, 6, 9, 12];
+
   return (
     <div>
-      <KpiTabSelector
-        configs={configs}
-        selectedId={selectedConfigId}
-        onSelect={setSelectedConfigId}
-      />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+        <KpiTabSelector
+          configs={configs}
+          selectedId={selectedConfigId}
+          onSelect={setSelectedConfigId}
+        />
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          {MONTH_OPTIONS.map((m) => (
+            <button
+              key={m}
+              onClick={() => setMonthsCount(m)}
+              style={{
+                padding: '4px 12px',
+                borderRadius: 16,
+                border: monthsCount === m ? '2px solid #4f46e5' : '1px solid #d1d5db',
+                background: monthsCount === m ? '#eef2ff' : '#fff',
+                color: monthsCount === m ? '#4f46e5' : '#6b7280',
+                fontWeight: monthsCount === m ? 700 : 400,
+                fontSize: 12,
+                cursor: 'pointer',
+              }}
+            >
+              {m} mois
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => exportClientKpisToExcel(clientId, clientName, 12)}
+          style={{
+            padding: '5px 14px',
+            borderRadius: 6,
+            border: '1px solid #d1d5db',
+            background: '#fff',
+            color: '#374151',
+            fontSize: 12,
+            cursor: 'pointer',
+            fontWeight: 500,
+            marginLeft: 'auto',
+          }}
+        >
+          Exporter Excel
+        </button>
+      </div>
 
       {isLoading && <div style={{ padding: 16, color: '#6b7280' }}>Chargement...</div>}
 
@@ -567,7 +722,22 @@ function HeatmapSection({
                       const rag = getRagStatus(val, thresholds);
                       const unit = heatmap.unit ?? '';
                       return (
-                        <td key={period} style={{ ...cellBase, background: RAG_BG[rag], borderLeft: `3px solid ${RAG_BORDER[rag]}` }}>
+                        <td
+                          key={period}
+                          style={{
+                            ...cellBase,
+                            background: RAG_BG[rag],
+                            borderLeft: `3px solid ${RAG_BORDER[rag]}`,
+                            cursor: val !== null ? 'pointer' : 'default',
+                          }}
+                          onClick={val !== null ? () => setIssueModal({
+                            collaboratorId: collab.id,
+                            collaboratorName: collab.name,
+                            kpiName: heatmap.kpiName,
+                            period,
+                          }) : undefined}
+                          title={val !== null ? 'Cliquer pour le detail des tickets' : undefined}
+                        >
                           {val !== null ? `${val.toFixed(1)}${unit}` : '---'}
                         </td>
                       );
@@ -628,6 +798,18 @@ function HeatmapSection({
             </span>
           </div>
         </>
+      )}
+
+      {/* Modal tickets source */}
+      {issueModal && (
+        <SourceIssuesModal
+          clientId={clientId}
+          collaboratorId={issueModal.collaboratorId}
+          collaboratorName={issueModal.collaboratorName}
+          kpiName={issueModal.kpiName}
+          period={issueModal.period}
+          onClose={() => setIssueModal(null)}
+        />
       )}
     </div>
   );
@@ -1028,7 +1210,7 @@ export default function DashboardPage() {
         title="KPIs globaux"
         extra={<ExportButton data={kpis ?? []} filename={`kpi-${selectedPeriod}`} />}
       >
-        <KpiCardsRow kpis={kpis ?? []} />
+        <KpiCardsRow kpis={kpis ?? []} clientId={selectedClientId} period={selectedPeriod} />
       </Section>
 
       {/* 3. Team table */}
@@ -1040,8 +1222,8 @@ export default function DashboardPage() {
 
       {/* 4. Heatmap 6 months */}
       {(isAdminOrDM || isChefDeProjet) && activeConfigs.length > 0 && (
-        <Section title="Heatmap 6 mois">
-          <HeatmapSection clientId={selectedClientId} configs={activeConfigs} />
+        <Section title="Heatmap equipe">
+          <HeatmapSection clientId={selectedClientId} clientName={clientName} configs={activeConfigs} />
         </Section>
       )}
 

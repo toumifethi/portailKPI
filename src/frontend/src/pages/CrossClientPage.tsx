@@ -12,6 +12,7 @@ import {
   Legend,
 } from 'chart.js';
 import { dashboardApi, kpiApi } from '@/api/endpoints';
+import { exportCrossClientKpisToExcel } from '@/utils/excelExport';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
@@ -66,6 +67,22 @@ export default function CrossClientPage() {
             <option key={d.id} value={d.id}>{d.name}</option>
           ))}
         </select>
+        <button
+          onClick={() => exportCrossClientKpisToExcel(12)}
+          style={{
+            padding: '6px 14px',
+            borderRadius: 6,
+            border: '1px solid #d1d5db',
+            background: '#fff',
+            color: '#374151',
+            fontSize: 13,
+            cursor: 'pointer',
+            fontWeight: 500,
+            marginLeft: 'auto',
+          }}
+        >
+          Exporter Excel (tous KPI)
+        </button>
       </div>
 
       {/* Toggles clients */}
