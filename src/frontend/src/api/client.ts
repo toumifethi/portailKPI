@@ -1,8 +1,17 @@
 import axios, { AxiosInstance } from 'axios';
-import { PublicClientApplication } from '@azure/msal-browser';
-import { msalConfig, loginRequest } from '@/auth/msalConfig';
 
-const msalInstance = new PublicClientApplication(msalConfig);
+const IS_DEV_AUTH = import.meta.env.VITE_AUTH_MODE === 'dev';
+
+// MSAL initialisé uniquement en mode azure (évite le crash crypto en mode dev)
+let msalInstance: import('@azure/msal-browser').PublicClientApplication | null = null;
+let loginRequest: { scopes: string[] } | null = null;
+
+if (!IS_DEV_AUTH) {
+  const { PublicClientApplication } = require('@azure/msal-browser') as typeof import('@azure/msal-browser');
+  const msalConfig = require('@/auth/msalConfig') as typeof import('@/auth/msalConfig');
+  msalInstance = new PublicClientApplication(msalConfig.msalConfig);
+  loginRequest = msalConfig.loginRequest;
+}
 
 function createApiClient(): AxiosInstance {
   const client = axios.create({
@@ -11,11 +20,9 @@ function createApiClient(): AxiosInstance {
     timeout: 30_000,
   });
 
-  // Intercepteur : ajoute le Bearer token Azure AD (ignoré en mode dev)
   client.interceptors.request.use(async (config) => {
-    if (import.meta.env.VITE_AUTH_MODE === 'dev') {
+    if (IS_DEV_AUTH) {
       config.headers.Authorization = 'Bearer dev-bypass-token';
-      // Envoyer l'ID du collaborateur simulé
       const stored = localStorage.getItem('portail-kpi-app');
       if (stored) {
         try {
@@ -27,6 +34,8 @@ function createApiClient(): AxiosInstance {
       }
       return config;
     }
+
+    if (!msalInstance || !loginRequest) return config;
 
     const accounts = msalInstance.getAllAccounts();
     if (accounts.length === 0) return config;
@@ -44,11 +53,10 @@ function createApiClient(): AxiosInstance {
     return config;
   });
 
-  // Intercepteur réponse : normalise les erreurs
   client.interceptors.response.use(
     (response) => response,
     (error) => {
-      if (error.response?.status === 401) {
+      if (error.response?.status === 401 && msalInstance && loginRequest) {
         msalInstance.acquireTokenRedirect(loginRequest);
       }
       return Promise.reject(error);
