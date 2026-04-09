@@ -23,7 +23,7 @@ router.get('/kpis', requireAuth, async (req, res, next) => {
       throw new AppError(400, 'clientId and period are required', 'MISSING_PARAMS');
     }
 
-    const data = await getDashboardKpis(clientId, period, periodType, req.user!);
+    const data = await getDashboardKpis(clientId, period, periodType, (req as AuthenticatedRequest).user!);
     res.json(data);
   } catch (err) {
     next(err);
@@ -45,7 +45,7 @@ router.get('/evolution', requireAuth, async (req, res, next) => {
       throw new AppError(400, 'clientId and kpiClientConfigId are required', 'MISSING_PARAMS');
     }
 
-    const data = await getKpiEvolution(clientId, kpiClientConfigId, periods, req.user!);
+    const data = await getKpiEvolution(clientId, kpiClientConfigId, periods, (req as AuthenticatedRequest).user!);
     res.json(data);
   } catch (err) {
     next(err);
@@ -66,7 +66,7 @@ router.get('/cross-client', requireAuth, adminOrDm, async (req, res, next) => {
       throw new AppError(400, 'kpiDefinitionId is required', 'MISSING_PARAMS');
     }
 
-    const data = await getCrossClientKpis(kpiDefinitionId, periods, req.user!);
+    const data = await getCrossClientKpis(kpiDefinitionId, periods, (req as AuthenticatedRequest).user!);
     res.json(data);
   } catch (err) {
     next(err);
@@ -224,7 +224,7 @@ router.get('/my-kpis', requireAuth, async (req: AuthenticatedRequest, res, next)
     const period = String(req.query.period ?? '');
     if (!period) throw new AppError(400, 'period is required', 'MISSING_PARAMS');
 
-    const collaboratorId = req.user!.id;
+    const collaboratorId = (req as AuthenticatedRequest).user!.id;
     const [year, month] = period.split('-').map(Number);
     const periodStart = new Date(year, month - 1, 1);
 

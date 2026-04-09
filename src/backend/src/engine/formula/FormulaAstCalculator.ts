@@ -101,6 +101,7 @@ export class FormulaAstCalculator {
       originalEstimateHours: i.originalEstimateHours !== null ? Number(i.originalEstimateHours) : null,
       rollupEstimateHours: i.rollupEstimateHours !== null ? Number(i.rollupEstimateHours) : null,
       rollupTimeSpentHours: i.rollupTimeSpentHours !== null ? Number(i.rollupTimeSpentHours) : null,
+      rollupRemainingHours: i.rollupRemainingHours !== null ? Number(i.rollupRemainingHours) : null,
     }));
   }
 
@@ -462,7 +463,7 @@ export class FormulaAstCalculator {
     const scopeRule = filters.scopeRule;
     if (scopeRule) {
       await this.applyScopeRule(where, scopeRule, context);
-    } else if (filters.useResolvedAt) {
+    } else if ((filters as Record<string, unknown>).useResolvedAt) {
       // Rétrocompatibilité avec l'ancien champ
       where.resolvedAt = { gte: context.periodStart, lte: context.periodEnd };
     } else {
@@ -690,7 +691,7 @@ export class FormulaAstCalculator {
   ): Promise<string[]> {
     // Cache : même période + même client = même résultat, pas besoin de requêter 4 fois
     const cacheKey = `parentJiraIds_${context.clientId}_${context.periodStart.getTime()}_${context.periodEnd.getTime()}`;
-    const cached = (context as Record<string, unknown>)[cacheKey] as string[] | undefined;
+    const cached = (context as unknown as Record<string, unknown>)[cacheKey] as string[] | undefined;
     if (cached) return cached;
 
     const where = {
@@ -722,7 +723,7 @@ export class FormulaAstCalculator {
     }
 
     // Mettre en cache
-    (context as Record<string, unknown>)[cacheKey] = parentIds;
+    (context as unknown as Record<string, unknown>)[cacheKey] = parentIds;
 
     return parentIds;
   }

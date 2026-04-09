@@ -5,6 +5,7 @@ import { prisma } from '@/db/prisma';
 import { JiraClient } from '@/importer/jiraClient';
 import { syncCustomFields } from '@/importer/phases/syncCustomFields';
 import { logger } from '@/utils/logger';
+import { Prisma } from '@prisma/client';
 import { AppError } from '../middleware/errorHandler';
 import { z } from 'zod';
 
@@ -79,7 +80,7 @@ router.post('/', requireAuth, adminOnly, async (req, res, next) => {
         jiraEmail: body.jiraEmail,
         jiraApiToken: body.jiraApiToken,
         tempoApiToken: body.tempoApiToken ?? null,
-        fieldMapping: body.fieldMapping ?? null,
+        fieldMapping: (body.fieldMapping ?? Prisma.JsonNull) as Prisma.InputJsonValue,
       },
     });
 

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '@/auth/jwtMiddleware';
+import type { AuthenticatedRequest } from '@/auth/jwtMiddleware';
 import { prisma } from '@/db/prisma';
 import { config } from '@/config';
 
@@ -10,11 +11,12 @@ const router = Router();
  * Retourne le profil de l'utilisateur authentifié.
  */
 router.get('/me', requireAuth, (req, res) => {
+  const user = (req as AuthenticatedRequest).user!;
   res.json({
-    id: req.user!.id,
-    email: req.user!.email,
-    profile: req.user!.profile,
-    roles: req.user!.roles,
+    id: user.id,
+    email: user.email,
+    profile: user.profile,
+    roles: user.roles,
   });
 });
 

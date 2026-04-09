@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/db/prisma';
 
 /**
@@ -54,7 +55,7 @@ export async function completeJobLog(jobLogId: number, params: {
       ...(params.itemsProcessed !== undefined && { itemsProcessed: params.itemsProcessed }),
       ...(params.errorCount !== undefined && { errorCount: params.errorCount }),
       ...(params.errorMessage !== undefined && { errorMessage: params.errorMessage }),
-      ...(params.metadata !== undefined && { metadata: params.metadata }),
+      ...(params.metadata !== undefined && { metadata: params.metadata as Prisma.InputJsonValue }),
     },
   });
 }

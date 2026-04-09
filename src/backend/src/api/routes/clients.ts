@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '@/auth/jwtMiddleware';
+import type { AuthenticatedRequest } from '@/auth/jwtMiddleware';
 import { adminOnly, managerAndAbove } from '@/auth/rbacMiddleware';
 import { prisma } from '@/db/prisma';
 import { JiraClient, JiraFieldInfo } from '@/importer/jiraClient';
@@ -15,7 +16,7 @@ const router = Router();
  */
 router.get('/', requireAuth, async (req, res, next) => {
   try {
-    const user = req.user!;
+    const user = (req as AuthenticatedRequest).user!;
     const isAdmin = user.roles.includes('ADMIN');
     const isDm = user.roles.includes('DM');
 
@@ -387,7 +388,7 @@ router.patch('/:id/archive', requireAuth, adminOnly, async (req, res, next) => {
         status: 'ARCHIVED',
         archivedAt: new Date(),
         archiveReason: reason ?? null,
-        archivedByCollaboratorId: req.user!.id,
+        archivedByCollaboratorId: (req as AuthenticatedRequest).user!.id,
       },
     });
 

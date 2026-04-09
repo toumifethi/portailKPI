@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '@/auth/jwtMiddleware';
 import { adminOnly, managerAndAbove } from '@/auth/rbacMiddleware';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/db/prisma';
 import { AppError } from '../middleware/errorHandler';
 import { z } from 'zod';
@@ -92,9 +93,9 @@ router.patch('/configs/:id', requireAuth, managerAndAbove, async (req, res, next
     const updated = await prisma.kpiClientConfig.update({
       where: { id },
       data: {
-        ...(body.configOverride !== undefined && { configOverride: body.configOverride }),
+        ...(body.configOverride !== undefined && { configOverride: body.configOverride as Prisma.InputJsonValue }),
         ...(body.formulaOverride !== undefined && { formulaOverride: body.formulaOverride }),
-        ...(body.formulaAstOverride !== undefined && { formulaAstOverride: body.formulaAstOverride }),
+        ...(body.formulaAstOverride !== undefined && { formulaAstOverride: body.formulaAstOverride as Prisma.InputJsonValue }),
         ...(body.isActive !== undefined && { isActive: body.isActive }),
         ...(body.debugMode !== undefined && { debugMode: body.debugMode }),
         ...(body.debugCollaboratorId !== undefined && { debugCollaboratorId: body.debugCollaboratorId }),
@@ -142,7 +143,7 @@ router.post('/definitions', requireAuth, adminOnly, async (req, res, next) => {
     const body = definitionSchema.parse(req.body);
     // Valider l'AST si fourni
     if (body.formulaType === 'FORMULA_AST' && body.formulaAst) {
-      const validation = validateFormula(body.formulaAst as FormulaAst);
+      const validation = validateFormula(body.formulaAst as unknown as FormulaAst);
       if (!validation.valid) {
         throw new AppError(400, `Formule invalide: ${validation.errors.join(', ')}`, 'INVALID_FORMULA');
       }
@@ -154,8 +155,8 @@ router.post('/definitions', requireAuth, adminOnly, async (req, res, next) => {
         description: body.description ?? null,
         unit: body.unit ?? null,
         formulaType: body.formulaType,
-        baseConfig: body.baseConfig,
-        formulaAst: body.formulaAst ?? null,
+        baseConfig: body.baseConfig as Prisma.InputJsonValue,
+        formulaAst: (body.formulaAst ?? Prisma.JsonNull) as Prisma.InputJsonValue,
         defaultThresholdRedMin: body.defaultThresholdRedMin ?? null,
         defaultThresholdRedMax: body.defaultThresholdRedMax ?? null,
         defaultThresholdOrangeMin: body.defaultThresholdOrangeMin ?? null,
@@ -202,9 +203,9 @@ router.post('/definitions/:id/duplicate', requireAuth, adminOnly, async (req, re
         description: original.description,
         unit: original.unit,
         formulaType: original.formulaType,
-        baseConfig: original.baseConfig ?? {},
-        configSchema: original.configSchema,
-        formulaAst: original.formulaAst,
+        baseConfig: (original.baseConfig ?? {}) as Prisma.InputJsonValue,
+        configSchema: (original.configSchema ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+        formulaAst: (original.formulaAst ?? Prisma.JsonNull) as Prisma.InputJsonValue,
         defaultThresholdRedMin: original.defaultThresholdRedMin,
         defaultThresholdRedMax: original.defaultThresholdRedMax,
         defaultThresholdOrangeMin: original.defaultThresholdOrangeMin,
@@ -258,8 +259,8 @@ router.patch('/definitions/:id', requireAuth, adminOnly, async (req, res, next) 
         ...(body.description !== undefined && { description: body.description ?? null }),
         ...(body.unit !== undefined && { unit: body.unit ?? null }),
         ...(body.formulaType !== undefined && { formulaType: body.formulaType }),
-        ...(body.baseConfig !== undefined && { baseConfig: body.baseConfig }),
-        ...(body.formulaAst !== undefined && { formulaAst: body.formulaAst }),
+        ...(body.baseConfig !== undefined && { baseConfig: body.baseConfig as Prisma.InputJsonValue }),
+        ...(body.formulaAst !== undefined && { formulaAst: (body.formulaAst ?? Prisma.JsonNull) as Prisma.InputJsonValue }),
         ...(body.defaultThresholdRedMin !== undefined && { defaultThresholdRedMin: body.defaultThresholdRedMin }),
         ...(body.defaultThresholdRedMax !== undefined && { defaultThresholdRedMax: body.defaultThresholdRedMax }),
         ...(body.defaultThresholdOrangeMin !== undefined && { defaultThresholdOrangeMin: body.defaultThresholdOrangeMin }),

@@ -10,7 +10,7 @@ COPY prisma ./prisma
 COPY src ./src
 
 RUN npm run db:generate
-RUN npm run build
+RUN npx tsc --skipLibCheck
 
 # --- production image ---
 FROM node:20-alpine AS production

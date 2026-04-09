@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/db/prisma';
 import { JiraClient, JiraIssue } from '../jiraClient';
 import { logger } from '@/utils/logger';
@@ -158,7 +159,7 @@ async function fetchParentsUpToEpic(
     const parents = await prisma.issue.findMany({
       where: {
         jiraId: { in: currentIds },
-        customFields: { path: ['$.parent.id'], not: null },
+        customFields: { path: '$.parent.id', not: Prisma.JsonNull },
       },
       select: { customFields: true },
     });
@@ -213,11 +214,11 @@ async function upsertIssue(
     originalEstimateSeconds: f.timeoriginalestimate ?? null,
     originalEstimateHours: f.timeoriginalestimate ? f.timeoriginalestimate / 3600 : null,
     timeSpentSeconds: f.timespent ?? null,
-    remainingEstimateSeconds: f.timeestimate ?? null,
-    storyPoints: fieldMapping.storyPoints && typeof f[fieldMapping.storyPoints] === 'number' ? f[fieldMapping.storyPoints] : null,
+    remainingEstimateSeconds: (f.timeestimate ?? null) as number | null,
+    storyPoints: (fieldMapping.storyPoints && typeof f[fieldMapping.storyPoints] === 'number' ? f[fieldMapping.storyPoints] : null) as number | null,
     jiraUpdatedAt: new Date(f.updated),
     resolvedAt: f.resolutiondate ? new Date(f.resolutiondate) : null,
-    customFields: extractCustomFields(f),
+    customFields: extractCustomFields(f) as Prisma.InputJsonValue,
   };
 
   // Détecte si c'est une nouvelle issue (pour backfill worklogs)
