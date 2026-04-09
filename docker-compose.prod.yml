@@ -1,7 +1,5 @@
-version: '3.9'
-
 # Stack de production autonome pour Oracle Cloud Free Tier (1GB RAM)
-# Commande : docker compose -f docker-compose.prod.yml up -d --build
+# Commande : docker-compose -f docker-compose.prod.yml up -d --build
 
 services:
 
@@ -14,7 +12,6 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-ProdP@ss2024}
     volumes:
       - mysql_data:/var/lib/mysql
-    # Optimisation RAM pour 1GB total
     command: >
       --innodb-buffer-pool-size=128M
       --innodb-log-file-size=32M
@@ -25,16 +22,12 @@ services:
       --table-open-cache=64
       --performance-schema=OFF
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "portailkpi", "-p${MYSQL_PASSWORD:-ProdP@ss2024}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "portailkpi", "-pProdP@ss2024"]
       interval: 15s
       timeout: 5s
       retries: 10
-      start_period: 60s
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 384M
+    mem_limit: 384m
 
   redis:
     image: redis:7-alpine
@@ -47,10 +40,7 @@ services:
       timeout: 3s
       retries: 5
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 48M
+    mem_limit: 48m
 
   backend:
     build:
@@ -68,23 +58,12 @@ services:
       KPI_RECALC_CONCURRENCY: "1"
       JIRA_PAGE_SIZE: "100"
       PORT: "3000"
-    # Node.js memory limit pour 1GB server
     command: ["node", "--max-old-space-size=256", "dist/index.js"]
     depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - mysql
+      - redis
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-    deploy:
-      resources:
-        limits:
-          memory: 320M
+    mem_limit: 320m
 
   frontend:
     build:
@@ -96,14 +75,10 @@ services:
         VITE_AZURE_AD_CLIENT_ID: ${AZURE_AD_CLIENT_ID}
     ports:
       - "80:80"
-      - "443:443"
     depends_on:
       - backend
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 64M
+    mem_limit: 64m
 
 volumes:
   mysql_data:
