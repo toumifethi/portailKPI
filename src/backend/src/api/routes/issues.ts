@@ -180,7 +180,9 @@ router.get('/types', requireAuth, async (req: AuthenticatedRequest, res, next) =
   try {
     const scope = await resolveUserScope(req);
     const where: Record<string, unknown> = {};
-    if (scope.clientIds !== null) {
+    if (req.query.clientId) {
+      where.clientId = Number(req.query.clientId);
+    } else if (scope.clientIds !== null) {
       if (scope.clientIds.length === 0) return res.json([]);
       where.clientId = { in: scope.clientIds };
     }

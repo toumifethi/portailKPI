@@ -10,7 +10,7 @@ const NAV_ITEMS = [
   { path: '/collaborateurs', label: 'KPI Collaborateurs', icon: '👤', minLevel: 60 },
   { path: '/issues', label: 'Issues', icon: '🎫', minLevel: 40 },
   { path: '/worklogs', label: 'Worklogs', icon: '⏱️', minLevel: 40 },
-  { path: '/issue-links', label: 'Analyse retours', icon: '🔄', minLevel: 60 },
+  { path: '/issue-links', label: 'Analyse des liens', icon: '🔗', minLevel: 60 },
   { path: '/transitions', label: 'Transitions', icon: '\u21C4', minLevel: 40 },
   { section: 'Administration', minLevel: 60 },
   { path: '/admin/clients', label: 'Clients', icon: '🏢', minLevel: 100 },

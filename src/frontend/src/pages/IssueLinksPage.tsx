@@ -1,39 +1,97 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { issueLinksApi, clientsApi, jiraUsersApi } from '@/api/endpoints';
+import { issueLinksApi, issuesApi, clientsApi } from '@/api/endpoints';
+
+function CheckboxGroup({ label, items, selected, onToggle, loading, disabled }: {
+  label: string;
+  items: string[];
+  selected: string[];
+  onToggle: (item: string) => void;
+  loading?: boolean;
+  disabled?: string;
+}) {
+  const allSelected = items.length > 0 && items.every((i) => selected.includes(i));
+  function toggleAll() {
+    if (allSelected) {
+      for (const i of items) onToggle(i);
+    } else {
+      for (const i of items) {
+        if (!selected.includes(i)) onToggle(i);
+      }
+    }
+  }
+  return (
+    <div style={{ flex: 1, minWidth: 250 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+        <label style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>
+          {label}
+          {loading && <span style={{ color: '#9ca3af', fontWeight: 400 }}> (chargement...)</span>}
+          {disabled && <span style={{ color: '#9ca3af', fontWeight: 400 }}> ({disabled})</span>}
+        </label>
+        {items.length > 0 && (
+          <button onClick={toggleAll} style={{
+            padding: '1px 7px', fontSize: 10, borderRadius: 3, cursor: 'pointer',
+            border: '1px solid #d1d5db', background: allSelected ? '#eef2ff' : 'white',
+            color: allSelected ? '#4f46e5' : '#6b7280', fontWeight: 600,
+          }}>
+            {allSelected ? 'Tout decocher' : 'Tout cocher'}
+          </button>
+        )}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, minHeight: 28 }}>
+        {items.map((item) => {
+          const sel = selected.includes(item);
+          return (
+            <label key={item} style={{
+              display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer',
+              padding: '3px 9px', borderRadius: 5,
+              background: sel ? '#dbeafe' : '#f3f4f6',
+              color: sel ? '#1d4ed8' : '#374151',
+              border: sel ? '1px solid #93c5fd' : '1px solid #e5e7eb',
+            }}>
+              <input type="checkbox" checked={sel} onChange={() => onToggle(item)}
+                style={{ accentColor: '#4f46e5', width: 12, height: 12 }} />
+              {item}
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 const PAGE_SIZE = 50;
 
-interface ReturnSummaryRow {
-  id: number;
+interface LinkedIssue {
+  linkType: string;
+  issueId: number;
   jiraKey: string;
   summary: string;
   issueType: string;
   status: string;
   assignee: string | null;
-  nbRetourInterne: number;
-  nbRetourClient: number;
-  nbRetourAutre: number;
-  nbRetourTotal: number;
-}
-
-interface ReturnDetailRow {
-  id: number;
-  jiraKey: string;
-  summary: string;
-  issueType: string;
-  status: string;
-  assignee: string | null;
+  estimateHours: number | null;
   timeSpentHours: number | null;
-  returnCategory: 'interne' | 'client' | 'autre';
+  remainingHours: number | null;
 }
 
-interface ReturnsSummaryResponse {
-  data: ReturnSummaryRow[];
+interface MainTicketRow {
+  id: number;
+  jiraKey: string;
+  summary: string;
+  issueType: string;
+  status: string;
+  assignee: string | null;
+  nbLinked: number;
+  linkedIssues: LinkedIssue[];
+}
+
+interface SummaryResponse {
+  data: MainTicketRow[];
   total: number;
   page: number;
   limit: number;
-  config: { internalTypes: string[]; clientTypes: string[]; returnLinkType: string };
+  linkTypes: string[];
 }
 
 function fmtHours(hours: number | null): string {
@@ -41,272 +99,258 @@ function fmtHours(hours: number | null): string {
   return `${hours.toFixed(1)}h`;
 }
 
-// ── Modal ──
-
-function ReturnDetailModal({ issueId, jiraKey, onClose }: { issueId: number; jiraKey: string; onClose: () => void }) {
-  const { data, isLoading, isError } = useQuery<ReturnDetailRow[]>({
-    queryKey: ['returns-detail', issueId],
-    queryFn: () => issueLinksApi.returnsDetail(issueId),
-  });
-
-  return (
-    <div style={overlayStyle} onClick={onClose}>
-      <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', margin: 0 }}>
-            Retours &mdash; {jiraKey}
-          </h2>
-          <button onClick={onClose} style={closeBtnStyle}>&times;</button>
-        </div>
-
-        <div style={{ overflow: 'auto', maxHeight: 'calc(80vh - 80px)' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
-                {['Clé', 'Résumé', 'Type', 'Statut', 'Assigné', 'Catégorie', 'Temps passé'].map(h => (
-                  <th key={h} style={thStyle}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
-                <tr><td colSpan={7} style={emptyTdStyle}>Chargement...</td></tr>
-              ) : isError ? (
-                <tr><td colSpan={7} style={{ ...emptyTdStyle, color: '#b91c1c' }}>Erreur de chargement.</td></tr>
-              ) : !data || data.length === 0 ? (
-                <tr><td colSpan={7} style={emptyTdStyle}>Aucun retour trouvé.</td></tr>
-              ) : (
-                data.map((row) => (
-                  <tr key={row.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                    <td style={tdStyle}>
-                      <span style={{ fontFamily: 'monospace', color: '#4f94ef' }}>{row.jiraKey}</span>
-                    </td>
-                    <td style={{ ...tdStyle, maxWidth: 300 }}>
-                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.summary}>
-                        {row.summary}
-                      </div>
-                    </td>
-                    <td style={tdStyle}><span style={typeBadge(row.issueType)}>{row.issueType}</span></td>
-                    <td style={tdStyle}><span style={statusBadge(row.status)}>{row.status}</span></td>
-                    <td style={tdStyle}>{row.assignee ?? '\u2014'}</td>
-                    <td style={tdStyle}><span style={categoryBadge(row.returnCategory)}>{row.returnCategory}</span></td>
-                    <td style={{ ...tdStyle, textAlign: 'right' }}>{fmtHours(row.timeSpentHours)}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Page ──
-
 export default function IssueLinksPage() {
-  const [clientId, setClientId] = useState('');
+  const [clientId, setClientId] = useState<number | undefined>(undefined);
+  const [selectedLinkTypes, setSelectedLinkTypes] = useState<string[]>([]);
+  const [selectedIssueTypes, setSelectedIssueTypes] = useState<string[]>([]);
   const [periodStart, setPeriodStart] = useState('');
   const [periodEnd, setPeriodEnd] = useState('');
-  const [projectId, setProjectId] = useState('');
-  const [assigneeAccountId, setAssigneeAccountId] = useState('');
   const [page, setPage] = useState(1);
-  const [modal, setModal] = useState<{ issueId: number; jiraKey: string } | null>(null);
+  const [expandedRow, setExpandedRow] = useState<number | null>(null);
 
-  const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list });
-  const { data: jiraUsers } = useQuery({ queryKey: ['jira-users-all'], queryFn: () => jiraUsersApi.list() });
-
-  // Load projects for selected client
-  const selectedClientId = clientId ? Number(clientId) : undefined;
-  const { data: projects } = useQuery({
-    queryKey: ['client-projects', selectedClientId],
-    queryFn: () => clientsApi.getProjects(selectedClientId!),
-    enabled: !!selectedClientId,
+  const { data: clients = [] } = useQuery({
+    queryKey: ['clients'],
+    queryFn: () => clientsApi.list(),
   });
 
-  const queryEnabled = !!selectedClientId;
+  const { data: linkTypes = [], isLoading: linkTypesLoading } = useQuery({
+    queryKey: ['link-types', clientId],
+    queryFn: () => issuesApi.listLinkTypes(clientId),
+    enabled: !!clientId,
+    staleTime: 60_000,
+  });
 
-  const { data, isLoading, isError, isFetching } = useQuery<ReturnsSummaryResponse>({
-    queryKey: ['returns-summary', selectedClientId, periodStart, periodEnd, projectId, assigneeAccountId, page],
+  const { data: issueTypes = [], isLoading: issueTypesLoading } = useQuery({
+    queryKey: ['issueTypes', clientId],
+    queryFn: () => issuesApi.listTypes(clientId),
+    enabled: !!clientId,
+    staleTime: 60_000,
+  });
+
+  const queryEnabled = !!clientId && selectedLinkTypes.length > 0;
+
+  const { data, isLoading, isError, isFetching } = useQuery<SummaryResponse>({
+    queryKey: ['returns-summary', clientId, selectedLinkTypes, selectedIssueTypes, periodStart, periodEnd, page],
     queryFn: () =>
       issueLinksApi.returnsSummary({
-        clientId: selectedClientId!,
+        clientId: clientId!,
+        linkTypes: selectedLinkTypes.join(','),
+        ...(selectedIssueTypes.length > 0 ? { issueTypes: selectedIssueTypes.join(',') } : {}),
         ...(periodStart ? { periodStart } : {}),
         ...(periodEnd ? { periodEnd } : {}),
-        ...(projectId ? { projectId: Number(projectId) } : {}),
-        ...(assigneeAccountId ? { assigneeAccountId } : {}),
         page,
         limit: PAGE_SIZE,
       }),
     enabled: queryEnabled,
-    placeholderData: (prev: ReturnsSummaryResponse | undefined) => prev,
+    placeholderData: (prev: SummaryResponse | undefined) => prev,
   });
 
   const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 1;
   const rows = data?.data ?? [];
 
-  // Compute totals
-  const totals = rows.reduce(
-    (acc, r) => ({
-      nbRetourInterne: acc.nbRetourInterne + r.nbRetourInterne,
-      nbRetourClient: acc.nbRetourClient + r.nbRetourClient,
-      nbRetourAutre: acc.nbRetourAutre + r.nbRetourAutre,
-      nbRetourTotal: acc.nbRetourTotal + r.nbRetourTotal,
-    }),
-    { nbRetourInterne: 0, nbRetourClient: 0, nbRetourAutre: 0, nbRetourTotal: 0 },
-  );
-
-  function resetFilters() {
-    setClientId('');
-    setPeriodStart('');
-    setPeriodEnd('');
-    setProjectId('');
-    setAssigneeAccountId('');
+  function toggleLinkType(lt: string) {
+    setSelectedLinkTypes((prev) =>
+      prev.includes(lt) ? prev.filter((t) => t !== lt) : [...prev, lt],
+    );
     setPage(1);
+    setExpandedRow(null);
   }
 
-  function handleCountClick(row: ReturnSummaryRow, _category: string) {
-    setModal({ issueId: row.id, jiraKey: row.jiraKey });
+  function toggleIssueType(it: string) {
+    setSelectedIssueTypes((prev) =>
+      prev.includes(it) ? prev.filter((t) => t !== it) : [...prev, it],
+    );
+    setPage(1);
+    setExpandedRow(null);
+  }
+
+  function handleClientChange(id: number | undefined) {
+    setClientId(id);
+    setSelectedLinkTypes([]);
+    setSelectedIssueTypes([]);
+    setPage(1);
+    setExpandedRow(null);
   }
 
   return (
     <div>
-      <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111827', marginBottom: 20 }}>Analyse des retours</h1>
+      <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111827', marginBottom: 20 }}>Analyse des liens</h1>
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20, alignItems: 'flex-end' }}>
-        <div>
-          <label style={labelStyle}>Client</label>
-          <select
-            value={clientId}
-            onChange={(e) => { setClientId(e.target.value); setProjectId(''); setPage(1); }}
-            style={inputStyle}
-          >
-            <option value="">-- Sélectionner --</option>
-            {clients?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+      {/* Filtres */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20, background: 'white', border: '1px solid #e5e7eb', borderRadius: 8, padding: 16 }}>
+        {/* Ligne 1 : Client + Periode */}
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div>
+            <label style={labelStyle}>Client</label>
+            <select
+              value={clientId ?? ''}
+              onChange={(e) => handleClientChange(e.target.value ? Number(e.target.value) : undefined)}
+              style={inputStyle}
+            >
+              <option value="">-- Selectionner un client --</option>
+              {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Periode debut</label>
+            <input type="date" value={periodStart} onChange={(e) => { setPeriodStart(e.target.value); setPage(1); }} style={inputStyle} />
+          </div>
+          <div>
+            <label style={labelStyle}>Periode fin</label>
+            <input type="date" value={periodEnd} onChange={(e) => { setPeriodEnd(e.target.value); setPage(1); }} style={inputStyle} />
+          </div>
         </div>
 
-        <div>
-          <label style={labelStyle}>Période début</label>
-          <input type="date" value={periodStart} onChange={(e) => { setPeriodStart(e.target.value); setPage(1); }} style={inputStyle} />
-        </div>
+        {/* Ligne 2 : Types de liens */}
+        <CheckboxGroup
+          label="Types de liens"
+          items={linkTypes}
+          selected={selectedLinkTypes}
+          onToggle={toggleLinkType}
+          loading={linkTypesLoading && !!clientId}
+          disabled={!clientId ? 'choisir un client' : undefined}
+        />
 
-        <div>
-          <label style={labelStyle}>P\u00e9riode fin</label>
-          <input type="date" value={periodEnd} onChange={(e) => { setPeriodEnd(e.target.value); setPage(1); }} style={inputStyle} />
-        </div>
-
-        <div>
-          <label style={labelStyle}>Projet</label>
-          <select
-            value={projectId}
-            onChange={(e) => { setProjectId(e.target.value); setPage(1); }}
-            style={inputStyle}
-            disabled={!selectedClientId}
-          >
-            <option value="">Tous les projets</option>
-            {projects?.map((p) => <option key={p.id} value={p.id}>{p.jiraProjectName}</option>)}
-          </select>
-        </div>
-
-        <div>
-          <label style={labelStyle}>Assign\u00e9</label>
-          <select
-            value={assigneeAccountId}
-            onChange={(e) => { setAssigneeAccountId(e.target.value); setPage(1); }}
-            style={inputStyle}
-          >
-            <option value="">Tous</option>
-            {jiraUsers?.map((ju) => (
-              <option key={ju.jiraAccountId} value={ju.jiraAccountId}>
-                {ju.collaborator ? `${ju.collaborator.firstName} ${ju.collaborator.lastName}` : ju.displayName}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <button onClick={resetFilters} style={resetBtnStyle}>R\u00e9initialiser</button>
+        {/* Ligne 3 : Types d'issues */}
+        <CheckboxGroup
+          label="Types d'issues"
+          items={issueTypes}
+          selected={selectedIssueTypes}
+          onToggle={toggleIssueType}
+          loading={issueTypesLoading && !!clientId}
+          disabled={!clientId ? 'choisir un client' : undefined}
+        />
       </div>
 
+      {/* Message si pas pret */}
       {!queryEnabled && (
         <div style={{ padding: 32, textAlign: 'center', color: '#6b7280', background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
-          S\u00e9lectionnez un client pour afficher l'analyse des retours.
+          {!clientId ? 'Selectionnez un client pour commencer.' : 'Selectionnez au moins un type de lien.'}
         </div>
       )}
 
+      {/* Resultats */}
       {queryEnabled && (
         <>
-          {/* Counter */}
           <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>
             {isError && <span style={{ color: '#b91c1c' }}>Erreur lors du chargement.</span>}
-            {data && `${data.total.toLocaleString('fr-FR')} ticket(s) de d\u00e9veloppement avec retours`}
-            {isFetching && !isLoading ? ' \u00b7 chargement...' : ''}
+            {data && `${data.total.toLocaleString('fr-FR')} ticket(s) principal(aux) avec des liens`}
+            {isFetching && !isLoading ? ' · chargement...' : ''}
           </div>
 
-          {/* Table */}
           <div style={{ background: 'white', borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
-                  {['Cl\u00e9', 'R\u00e9sum\u00e9', 'Type', 'Statut', 'Assign\u00e9', 'Retours internes', 'Retours clients', 'Autres', 'Total'].map(h => (
+                  {['', 'Cle', 'Resume', 'Type', 'Statut', 'Assigne', 'Types de liens', 'Nb liens'].map(h => (
                     <th key={h} style={thStyle}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
-                  <tr><td colSpan={9} style={emptyTdStyle}>Chargement...</td></tr>
-                ) : isError ? (
-                  <tr><td colSpan={9} style={{ ...emptyTdStyle, color: '#b91c1c' }}>Erreur de chargement.</td></tr>
+                  <tr><td colSpan={8} style={emptyTdStyle}>Chargement...</td></tr>
                 ) : rows.length === 0 ? (
-                  <tr><td colSpan={9} style={emptyTdStyle}>Aucun ticket avec retours trouv\u00e9.</td></tr>
+                  <tr><td colSpan={8} style={emptyTdStyle}>Aucun ticket avec liens trouve.</td></tr>
                 ) : (
-                  <>
-                    {rows.map((row) => (
-                      <tr key={row.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                        <td style={tdStyle}>
-                          <span style={{ fontFamily: 'monospace', color: '#4f94ef' }}>{row.jiraKey}</span>
-                        </td>
-                        <td style={{ ...tdStyle, maxWidth: 300 }}>
-                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.summary}>
-                            {row.summary}
-                          </div>
-                        </td>
-                        <td style={tdStyle}><span style={typeBadge(row.issueType)}>{row.issueType}</span></td>
-                        <td style={tdStyle}><span style={statusBadge(row.status)}>{row.status}</span></td>
-                        <td style={tdStyle}>{row.assignee ?? '\u2014'}</td>
-                        <td style={{ ...tdStyle, textAlign: 'center' }}>
-                          {row.nbRetourInterne > 0
-                            ? <button onClick={() => handleCountClick(row, 'interne')} style={linkBtnStyle}>{row.nbRetourInterne}</button>
-                            : '\u2014'}
-                        </td>
-                        <td style={{ ...tdStyle, textAlign: 'center' }}>
-                          {row.nbRetourClient > 0
-                            ? <button onClick={() => handleCountClick(row, 'client')} style={linkBtnStyle}>{row.nbRetourClient}</button>
-                            : '\u2014'}
-                        </td>
-                        <td style={{ ...tdStyle, textAlign: 'center' }}>
-                          {row.nbRetourAutre > 0
-                            ? <button onClick={() => handleCountClick(row, 'autre')} style={linkBtnStyle}>{row.nbRetourAutre}</button>
-                            : '\u2014'}
-                        </td>
-                        <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 600 }}>
-                          {row.nbRetourTotal > 0
-                            ? <button onClick={() => handleCountClick(row, 'total')} style={linkBtnStyle}>{row.nbRetourTotal}</button>
-                            : '\u2014'}
-                        </td>
-                      </tr>
-                    ))}
-                    {/* Totals row */}
-                    <tr style={{ borderTop: '2px solid #e5e7eb', background: '#f9fafb', fontWeight: 700 }}>
-                      <td colSpan={5} style={{ ...tdStyle, textAlign: 'right', color: '#374151' }}>Total (page)</td>
-                      <td style={{ ...tdStyle, textAlign: 'center', color: '#374151' }}>{totals.nbRetourInterne}</td>
-                      <td style={{ ...tdStyle, textAlign: 'center', color: '#374151' }}>{totals.nbRetourClient}</td>
-                      <td style={{ ...tdStyle, textAlign: 'center', color: '#374151' }}>{totals.nbRetourAutre}</td>
-                      <td style={{ ...tdStyle, textAlign: 'center', color: '#374151' }}>{totals.nbRetourTotal}</td>
-                    </tr>
-                  </>
+                  rows.map((row) => {
+                    const isExpanded = expandedRow === row.id;
+                    return (
+                      <React.Fragment key={row.id}>
+                        <tr
+                          style={{ borderBottom: '1px solid #f3f4f6', cursor: 'pointer', background: isExpanded ? '#f0f9ff' : undefined }}
+                          onClick={() => setExpandedRow(isExpanded ? null : row.id)}
+                        >
+                          <td style={{ ...tdStyle, width: 28, textAlign: 'center', color: '#6b7280' }}>
+                            {isExpanded ? '\u25BC' : '\u25B6'}
+                          </td>
+                          <td style={tdStyle}>
+                            <span style={{ fontFamily: 'monospace', color: '#4f94ef' }}>{row.jiraKey}</span>
+                          </td>
+                          <td style={{ ...tdStyle, maxWidth: 350 }}>
+                            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.summary}>
+                              {row.summary}
+                            </div>
+                          </td>
+                          <td style={tdStyle}><span style={typeBadge(row.issueType)}>{row.issueType}</span></td>
+                          <td style={tdStyle}><span style={statusBadge(row.status)}>{row.status}</span></td>
+                          <td style={tdStyle}>{row.assignee ?? '\u2014'}</td>
+                          <td style={tdStyle}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                              {[...new Set(row.linkedIssues.map((li) => li.linkType))].map((lt) => (
+                                <span key={lt} style={{ padding: '1px 6px', borderRadius: 4, fontSize: 10, background: '#ede9fe', color: '#6d28d9', whiteSpace: 'nowrap' }}>
+                                  {lt}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 600 }}>
+                            <span style={{
+                              display: 'inline-block', minWidth: 24, padding: '2px 8px', borderRadius: 10,
+                              background: '#dbeafe', color: '#1d4ed8', fontSize: 12,
+                            }}>
+                              {row.nbLinked}
+                            </span>
+                          </td>
+                        </tr>
+
+                        {/* Sous-tableau des issues liees */}
+                        {isExpanded && row.linkedIssues.length > 0 && (
+                          <tr>
+                            <td colSpan={8} style={{ padding: 0 }}>
+                              <div style={{ margin: '0 0 0 40px', padding: '8px 0' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                                  <thead>
+                                    <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #e2e8f0' }}>
+                                      {['Type de lien', 'Cle', 'Resume', 'Type issue', 'Statut', 'Assigne', 'Estime', 'Consomme', 'Restant'].map(h => (
+                                        <th key={h} style={{ ...thStyle, fontSize: 11 }}>{h}</th>
+                                      ))}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {row.linkedIssues.map((li, idx) => (
+                                      <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                        <td style={tdStyle}>
+                                          <span style={{ padding: '1px 6px', borderRadius: 4, fontSize: 11, background: '#ede9fe', color: '#6d28d9' }}>
+                                            {li.linkType}
+                                          </span>
+                                        </td>
+                                        <td style={tdStyle}>
+                                          <span style={{ fontFamily: 'monospace', color: '#4f94ef', fontSize: 11 }}>{li.jiraKey}</span>
+                                        </td>
+                                        <td style={{ ...tdStyle, maxWidth: 300 }}>
+                                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={li.summary}>
+                                            {li.summary}
+                                          </div>
+                                        </td>
+                                        <td style={tdStyle}><span style={typeBadge(li.issueType)}>{li.issueType}</span></td>
+                                        <td style={tdStyle}><span style={statusBadge(li.status)}>{li.status}</span></td>
+                                        <td style={tdStyle}>{li.assignee ?? '\u2014'}</td>
+                                        <td style={{ ...tdStyle, textAlign: 'right' }}>{fmtHours(li.estimateHours)}</td>
+                                        <td style={{ ...tdStyle, textAlign: 'right' }}>
+                                          {li.timeSpentHours ? (
+                                            <a
+                                              href={`/worklogs?issueId=${li.issueId}`}
+                                              onClick={(e) => { e.stopPropagation(); }}
+                                              style={{ color: '#2563eb', textDecoration: 'underline', cursor: 'pointer', fontSize: 12 }}
+                                              title="Voir le detail des worklogs"
+                                            >
+                                              {fmtHours(li.timeSpentHours)}
+                                            </a>
+                                          ) : '\u2014'}
+                                        </td>
+                                        <td style={{ ...tdStyle, textAlign: 'right' }}>{fmtHours(li.remainingHours)}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -316,7 +360,7 @@ export default function IssueLinksPage() {
           {totalPages > 1 && (
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 20, alignItems: 'center' }}>
               <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} style={pageBtnStyle(page === 1)}>
-                {'\u2190 Pr\u00e9c\u00e9dent'}
+                {'\u2190 Precedent'}
               </button>
               <span style={{ fontSize: 13, color: '#374151' }}>Page {page} / {totalPages}</span>
               <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} style={pageBtnStyle(page === totalPages)}>
@@ -325,15 +369,6 @@ export default function IssueLinksPage() {
             </div>
           )}
         </>
-      )}
-
-      {/* Detail Modal */}
-      {modal && (
-        <ReturnDetailModal
-          issueId={modal.issueId}
-          jiraKey={modal.jiraKey}
-          onClose={() => setModal(null)}
-        />
       )}
     </div>
   );
@@ -346,57 +381,12 @@ const inputStyle: React.CSSProperties = { padding: '6px 10px', border: '1px soli
 const thStyle: React.CSSProperties = { padding: '10px 12px', textAlign: 'left', fontSize: 12, color: '#6b7280', fontWeight: 600, whiteSpace: 'nowrap' };
 const tdStyle: React.CSSProperties = { padding: '8px 12px' };
 const emptyTdStyle: React.CSSProperties = { padding: 32, textAlign: 'center', color: '#6b7280' };
-const resetBtnStyle: React.CSSProperties = { padding: '6px 14px', border: '1px solid #d1d5db', borderRadius: 6, background: 'white', cursor: 'pointer', fontSize: 13 };
 
 const pageBtnStyle = (disabled: boolean): React.CSSProperties => ({
   padding: '6px 14px', border: '1px solid #d1d5db', borderRadius: 6,
   background: disabled ? '#f9fafb' : 'white', color: disabled ? '#9ca3af' : '#374151',
   cursor: disabled ? 'default' : 'pointer', fontSize: 13,
 });
-
-const linkBtnStyle: React.CSSProperties = {
-  background: 'none',
-  border: 'none',
-  color: '#2563eb',
-  textDecoration: 'underline',
-  cursor: 'pointer',
-  fontSize: 13,
-  fontWeight: 600,
-  padding: 0,
-};
-
-const overlayStyle: React.CSSProperties = {
-  position: 'fixed',
-  inset: 0,
-  background: 'rgba(0,0,0,0.4)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  zIndex: 1000,
-};
-
-const modalStyle: React.CSSProperties = {
-  background: 'white',
-  borderRadius: 12,
-  padding: 24,
-  width: '90vw',
-  maxWidth: 900,
-  maxHeight: '85vh',
-  overflow: 'hidden',
-  display: 'flex',
-  flexDirection: 'column',
-  boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
-};
-
-const closeBtnStyle: React.CSSProperties = {
-  background: 'none',
-  border: 'none',
-  fontSize: 24,
-  cursor: 'pointer',
-  color: '#6b7280',
-  lineHeight: 1,
-  padding: '4px 8px',
-};
 
 function typeBadge(type: string): React.CSSProperties {
   const map: Record<string, { bg: string; color: string }> = {
@@ -412,19 +402,9 @@ function typeBadge(type: string): React.CSSProperties {
 
 function statusBadge(status: string): React.CSSProperties {
   const s = status.toLowerCase();
-  if (s.includes('done') || s.includes('closed') || s.includes('resolved'))
+  if (s.includes('done') || s.includes('closed') || s.includes('resolved') || s.includes('termin'))
     return { padding: '2px 7px', borderRadius: 4, fontSize: 11, background: '#d1fae5', color: '#065f46' };
-  if (s.includes('progress') || s.includes('review'))
+  if (s.includes('progress') || s.includes('review') || s.includes('cours'))
     return { padding: '2px 7px', borderRadius: 4, fontSize: 11, background: '#dbeafe', color: '#1d4ed8' };
   return { padding: '2px 7px', borderRadius: 4, fontSize: 11, background: '#f3f4f6', color: '#374151' };
-}
-
-function categoryBadge(cat: string): React.CSSProperties {
-  const map: Record<string, { bg: string; color: string }> = {
-    interne: { bg: '#fef3c7', color: '#92400e' },
-    client: { bg: '#fee2e2', color: '#b91c1c' },
-    autre: { bg: '#f3f4f6', color: '#374151' },
-  };
-  const c = map[cat] ?? { bg: '#f3f4f6', color: '#374151' };
-  return { padding: '2px 7px', borderRadius: 4, fontSize: 11, fontWeight: 500, background: c.bg, color: c.color };
 }

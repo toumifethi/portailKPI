@@ -318,8 +318,8 @@ export const issuesApi = {
     apiClient
       .get<PaginatedResponse<IssueRow>>('/issues', { params })
       .then((r) => r.data),
-  listTypes: () =>
-    apiClient.get<string[]>('/issues/types').then((r) => r.data),
+  listTypes: (clientId?: number) =>
+    apiClient.get<string[]>('/issues/types', { params: clientId ? { clientId } : {} }).then((r) => r.data),
   listStatuses: () =>
     apiClient.get<string[]>('/issues/statuses').then((r) => r.data),
   listLinkTypes: (clientId?: number) =>
@@ -376,7 +376,7 @@ export const collaboratorsApi = {
 // --- Issue Links (Returns Analysis) ---
 
 export const issueLinksApi = {
-  returnsSummary: (params: { clientId: number; periodStart?: string; periodEnd?: string; projectId?: number; assigneeAccountId?: string; page?: number; limit?: number }) =>
+  returnsSummary: (params: { clientId: number; linkTypes: string; issueTypes?: string; periodStart?: string; periodEnd?: string; projectId?: number; assigneeAccountId?: string; page?: number; limit?: number }) =>
     apiClient.get('/issue-links/returns-summary', { params }).then(r => r.data),
   returnsDetail: (issueId: number) =>
     apiClient.get('/issue-links/returns-detail', { params: { issueId } }).then(r => r.data),

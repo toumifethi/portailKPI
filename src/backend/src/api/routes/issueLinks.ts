@@ -176,8 +176,8 @@ router.get('/detail', requireAuth, async (req: AuthenticatedRequest, res, next) 
 
 /**
  * GET /api/issue-links/returns-summary
- * For each "dev" ticket, counts internal and client returns linked to it.
- * Query: clientId (required), periodStart, periodEnd, projectId, assigneeAccountId, page, limit
+ * Pour chaque ticket principal (cible des liens), compte et liste les retours liés.
+ * Query: clientId (required), linkTypes (CSV, required), periodStart, periodEnd, projectId, assigneeAccountId, page, limit
  */
 router.get('/returns-summary', requireAuth, async (req: AuthenticatedRequest, res, next) => {
   try {
@@ -188,51 +188,43 @@ router.get('/returns-summary', requireAuth, async (req: AuthenticatedRequest, re
       return res.status(403).json({ error: 'Access denied' });
     }
 
+    const linkTypesRaw = req.query.linkTypes ? String(req.query.linkTypes) : '';
+    const linkTypes = linkTypesRaw.split(',').map(s => s.trim()).filter(Boolean);
+    if (linkTypes.length === 0) return res.json({ data: [], total: 0, page: 1, limit: 50, linkTypes: [] });
+
     const page = Math.max(1, Number(req.query.page ?? 1));
     const limit = Math.min(200, Math.max(1, Number(req.query.limit ?? 50)));
 
-    // Load client config for return issue types
-    const client = await prisma.client.findUnique({
-      where: { id: clientId },
-      select: {
-        returnInternalIssueTypes: true,
-        returnClientIssueTypes: true,
-        jiraConnection: { select: { fieldMapping: true } },
-      },
-    });
-
-    const internalTypes = (client?.returnInternalIssueTypes as string[]) ?? [];
-    const clientTypes = (client?.returnClientIssueTypes as string[]) ?? [];
-    const fieldMapping = (client?.jiraConnection?.fieldMapping as Record<string, unknown>) ?? {};
-    const returnLinkType = (fieldMapping.returnLinkType as string) ?? 'est un retour de';
-
-    // Build WHERE for dev tickets (targets of return links)
+    // Build WHERE for main tickets (targets of selected link types)
+    const linkTypeConditions = linkTypes.map(lt => ({ linkType: lt }));
     const issueWhere: Record<string, unknown> = {
       clientId,
-      // Dev tickets = those that have at least one return link pointing to them
       targetLinks: {
-        some: {
-          linkType: { contains: returnLinkType },
-        },
+        some: { OR: linkTypeConditions },
       },
     };
 
     if (req.query.projectId) issueWhere.projectId = Number(req.query.projectId);
     if (req.query.assigneeAccountId) issueWhere.assigneeJiraAccountId = String(req.query.assigneeAccountId);
 
-    if (req.query.periodStart || req.query.periodEnd) {
-      const updatedAt: Record<string, Date> = {};
-      if (req.query.periodStart) updatedAt.gte = new Date(String(req.query.periodStart));
-      if (req.query.periodEnd) updatedAt.lte = new Date(String(req.query.periodEnd));
-      issueWhere.jiraUpdatedAt = updatedAt;
+    // Filtre par types d'issues du ticket principal
+    if (req.query.issueTypes) {
+      const types = String(req.query.issueTypes).split(',').map(s => s.trim()).filter(Boolean);
+      if (types.length > 0) issueWhere.issueType = { in: types };
     }
 
-    // Scope for Dev/Viewer profiles
+    if (req.query.periodStart || req.query.periodEnd) {
+      const dateFilter: Record<string, Date> = {};
+      if (req.query.periodStart) dateFilter.gte = new Date(String(req.query.periodStart));
+      if (req.query.periodEnd) dateFilter.lte = new Date(String(req.query.periodEnd));
+      issueWhere.jiraUpdatedAt = dateFilter;
+    }
+
     if (scope.jiraAccountIds) {
       issueWhere.assigneeJiraAccountId = { in: scope.jiraAccountIds };
     }
 
-    const [total, devTickets] = await Promise.all([
+    const [total, mainTickets] = await Promise.all([
       prisma.issue.count({ where: issueWhere }),
       prisma.issue.findMany({
         where: issueWhere,
@@ -244,11 +236,21 @@ router.get('/returns-summary', requireAuth, async (req: AuthenticatedRequest, re
           status: true,
           assigneeJiraAccountId: true,
           targetLinks: {
-            where: { linkType: { contains: returnLinkType } },
+            where: { OR: linkTypeConditions },
             select: {
-              id: true,
+              linkType: true,
               sourceIssue: {
-                select: { issueType: true },
+                select: {
+                  id: true,
+                  jiraKey: true,
+                  summary: true,
+                  issueType: true,
+                  status: true,
+                  assigneeJiraAccountId: true,
+                  rollupEstimateHours: true,
+                  rollupTimeSpentHours: true,
+                  rollupRemainingHours: true,
+                },
               },
             },
           },
@@ -259,10 +261,13 @@ router.get('/returns-summary', requireAuth, async (req: AuthenticatedRequest, re
       }),
     ]);
 
-    // Resolve assignee names
+    // Resolve assignee names (tickets principaux + issues liees)
     const accountIds = new Set<string>();
-    for (const t of devTickets) {
+    for (const t of mainTickets) {
       if (t.assigneeJiraAccountId) accountIds.add(t.assigneeJiraAccountId);
+      for (const l of t.targetLinks) {
+        if (l.sourceIssue.assigneeJiraAccountId) accountIds.add(l.sourceIssue.assigneeJiraAccountId);
+      }
     }
     const jiraUsers = accountIds.size > 0
       ? await prisma.jiraUser.findMany({
@@ -272,37 +277,29 @@ router.get('/returns-summary', requireAuth, async (req: AuthenticatedRequest, re
       : [];
     const nameMap = new Map(jiraUsers.map(u => [u.jiraAccountId, u.displayName]));
 
-    const data = devTickets.map(t => {
-      let nbInternal = 0;
-      let nbClient = 0;
-      let nbOther = 0;
+    const data = mainTickets.map(t => ({
+      id: t.id,
+      jiraKey: t.jiraKey,
+      summary: t.summary,
+      issueType: t.issueType,
+      status: t.status,
+      assignee: nameMap.get(t.assigneeJiraAccountId ?? '') ?? t.assigneeJiraAccountId,
+      nbLinked: t.targetLinks.length,
+      linkedIssues: t.targetLinks.map(l => ({
+        linkType: l.linkType,
+        issueId: l.sourceIssue.id,
+        jiraKey: l.sourceIssue.jiraKey,
+        summary: l.sourceIssue.summary,
+        issueType: l.sourceIssue.issueType,
+        status: l.sourceIssue.status,
+        assignee: nameMap.get(l.sourceIssue.assigneeJiraAccountId ?? '') ?? l.sourceIssue.assigneeJiraAccountId,
+        estimateHours: l.sourceIssue.rollupEstimateHours ? Number(l.sourceIssue.rollupEstimateHours) : null,
+        timeSpentHours: l.sourceIssue.rollupTimeSpentHours ? Number(l.sourceIssue.rollupTimeSpentHours) : null,
+        remainingHours: l.sourceIssue.rollupRemainingHours ? Number(l.sourceIssue.rollupRemainingHours) : null,
+      })),
+    }));
 
-      for (const link of t.targetLinks) {
-        const returnIssueType = link.sourceIssue.issueType;
-        if (internalTypes.includes(returnIssueType)) {
-          nbInternal++;
-        } else if (clientTypes.includes(returnIssueType)) {
-          nbClient++;
-        } else {
-          nbOther++;
-        }
-      }
-
-      return {
-        id: t.id,
-        jiraKey: t.jiraKey,
-        summary: t.summary,
-        issueType: t.issueType,
-        status: t.status,
-        assignee: nameMap.get(t.assigneeJiraAccountId ?? '') ?? t.assigneeJiraAccountId,
-        nbRetourInterne: nbInternal,
-        nbRetourClient: nbClient,
-        nbRetourAutre: nbOther,
-        nbRetourTotal: nbInternal + nbClient + nbOther,
-      };
-    });
-
-    res.json({ data, total, page, limit, config: { internalTypes, clientTypes, returnLinkType } });
+    res.json({ data, total, page, limit, linkTypes });
   } catch (err) { next(err); }
 });
 
