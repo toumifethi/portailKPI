@@ -20,14 +20,29 @@ import MaintenancePage from './pages/admin/MaintenancePage';
 import IssueLinksPage from './pages/IssueLinksPage';
 import TransitionsPage from './pages/TransitionsPage';
 
-// Imports Azure AD
-import { MsalAuthenticationTemplate } from '@azure/msal-react';
-import { InteractionType } from '@azure/msal-browser';
-import { AuthProvider } from './auth/AuthProvider';
-import { loginRequest } from './auth/msalConfig';
-import LoginPage from './pages/LoginPage';
-
 const IS_DEV_AUTH = import.meta.env.VITE_AUTH_MODE === 'dev';
+
+// Azure AD imports — chargés uniquement en mode azure pour éviter le crash MSAL en mode dev
+let MsalAuthenticationTemplate: typeof import('@azure/msal-react').MsalAuthenticationTemplate;
+let InteractionType: typeof import('@azure/msal-browser').InteractionType;
+let AuthProvider: typeof import('./auth/AuthProvider').AuthProvider;
+let loginRequest: typeof import('./auth/msalConfig').loginRequest;
+let LoginPage: typeof import('./pages/LoginPage').default;
+
+if (!IS_DEV_AUTH) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const msalReact = require('@azure/msal-react') as typeof import('@azure/msal-react');
+  const msalBrowser = require('@azure/msal-browser') as typeof import('@azure/msal-browser');
+  const authProvider = require('./auth/AuthProvider') as typeof import('./auth/AuthProvider');
+  const msalConfig = require('./auth/msalConfig') as typeof import('./auth/msalConfig');
+  const loginPageModule = require('./pages/LoginPage') as { default: typeof import('./pages/LoginPage').default };
+
+  MsalAuthenticationTemplate = msalReact.MsalAuthenticationTemplate;
+  InteractionType = msalBrowser.InteractionType;
+  AuthProvider = authProvider.AuthProvider;
+  loginRequest = msalConfig.loginRequest;
+  LoginPage = loginPageModule.default;
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
