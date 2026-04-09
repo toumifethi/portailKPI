@@ -1,0 +1,110 @@
+version: '3.9'
+
+# Stack de production autonome pour Oracle Cloud Free Tier (1GB RAM)
+# Commande : docker compose -f docker-compose.prod.yml up -d --build
+
+services:
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-StrongRootP@ss2024}
+      MYSQL_DATABASE: portailkpi
+      MYSQL_USER: portailkpi
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-ProdP@ss2024}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    # Optimisation RAM pour 1GB total
+    command: >
+      --innodb-buffer-pool-size=128M
+      --innodb-log-file-size=32M
+      --max-connections=50
+      --key-buffer-size=16M
+      --tmp-table-size=16M
+      --max-heap-table-size=16M
+      --table-open-cache=64
+      --performance-schema=OFF
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "portailkpi", "-p${MYSQL_PASSWORD:-ProdP@ss2024}"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --maxmemory 32mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 48M
+
+  backend:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      AUTH_MODE: ${AUTH_MODE:-azure}
+      DATABASE_URL: mysql://portailkpi:${MYSQL_PASSWORD:-ProdP@ss2024}@mysql:3306/portailkpi
+      REDIS_URL: redis://redis:6379
+      AZURE_AD_TENANT_ID: ${AZURE_AD_TENANT_ID}
+      AZURE_AD_CLIENT_ID: ${AZURE_AD_CLIENT_ID}
+      CORS_ORIGIN: ${FRONTEND_URL:-http://localhost}
+      SQL_KPI_TIMEOUT_MS: "30000"
+      KPI_RECALC_CONCURRENCY: "1"
+      JIRA_PAGE_SIZE: "100"
+      PORT: "3000"
+    # Node.js memory limit pour 1GB server
+    command: ["node", "--max-old-space-size=256", "dist/index.js"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 320M
+
+  frontend:
+    build:
+      context: ./src/frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_AUTH_MODE: ${AUTH_MODE:-azure}
+        VITE_AZURE_AD_TENANT_ID: ${AZURE_AD_TENANT_ID}
+        VITE_AZURE_AD_CLIENT_ID: ${AZURE_AD_CLIENT_ID}
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+
+volumes:
+  mysql_data:
+  redis_data:
