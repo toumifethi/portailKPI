@@ -393,9 +393,7 @@ model Worklog {
 // ============================================================
 
 enum FormulaType {
-  PREDEFINED
   FORMULA_AST
-  JQL
   SQL
 }
 
@@ -405,7 +403,6 @@ model KpiDefinition {
   description    String?     @db.Text
   unit           String?     @db.VarChar(50)
   formulaType    FormulaType
-  predefinedType String?     @db.VarChar(100)
   baseConfig     Json
   configSchema   Json?
   // AST JSON de la formule guidée (type FORMULA_AST)

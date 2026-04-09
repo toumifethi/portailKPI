@@ -7,9 +7,11 @@ import { z } from 'zod';
 import { METRICS_CATALOG } from '@/engine/formula/metricsCatalog';
 import { validateFormula } from '@/engine/formula/validator';
 import { FormulaAstCalculator } from '@/engine/formula/FormulaAstCalculator';
+import { SqlCalculator } from '@/engine/calculators/sql/SqlCalculator';
 import type { FormulaAst } from '@/engine/formula/types';
 import type { AuthenticatedRequest } from '@/auth/jwtMiddleware';
 import { createJobLog, completeJobLog } from '@/services/jobLogger';
+import { getAppSetting } from '@/services/appSettings';
 
 const router = Router();
 
@@ -117,8 +119,7 @@ const definitionSchema = z.object({
   name: z.string().min(1).max(200),
   description: z.string().optional(),
   unit: z.string().max(50).optional(),
-  formulaType: z.enum(['PREDEFINED', 'FORMULA_AST', 'JQL', 'SQL']),
-  predefinedType: z.string().max(100).optional(),
+  formulaType: z.enum(['FORMULA_AST', 'SQL']),
   baseConfig: z.record(z.unknown()).default({}),
   formulaAst: z.record(z.unknown()).optional(),
   // Profils cibles (vide = tous)
@@ -153,7 +154,6 @@ router.post('/definitions', requireAuth, adminOnly, async (req, res, next) => {
         description: body.description ?? null,
         unit: body.unit ?? null,
         formulaType: body.formulaType,
-        predefinedType: body.predefinedType ?? null,
         baseConfig: body.baseConfig,
         formulaAst: body.formulaAst ?? null,
         defaultThresholdRedMin: body.defaultThresholdRedMin ?? null,
@@ -202,7 +202,6 @@ router.post('/definitions/:id/duplicate', requireAuth, adminOnly, async (req, re
         description: original.description,
         unit: original.unit,
         formulaType: original.formulaType,
-        predefinedType: original.predefinedType,
         baseConfig: original.baseConfig ?? {},
         configSchema: original.configSchema,
         formulaAst: original.formulaAst,
@@ -259,7 +258,6 @@ router.patch('/definitions/:id', requireAuth, adminOnly, async (req, res, next) 
         ...(body.description !== undefined && { description: body.description ?? null }),
         ...(body.unit !== undefined && { unit: body.unit ?? null }),
         ...(body.formulaType !== undefined && { formulaType: body.formulaType }),
-        ...(body.predefinedType !== undefined && { predefinedType: body.predefinedType ?? null }),
         ...(body.baseConfig !== undefined && { baseConfig: body.baseConfig }),
         ...(body.formulaAst !== undefined && { formulaAst: body.formulaAst }),
         ...(body.defaultThresholdRedMin !== undefined && { defaultThresholdRedMin: body.defaultThresholdRedMin }),
@@ -496,11 +494,13 @@ router.get('/source-issues', requireAuth, managerAndAbove, async (req: Authentic
     });
     if (!config) throw new AppError(404, 'KPI config not found', 'NOT_FOUND');
 
-    // Vérifier que c'est une formule AST (priorité : override client > définition globale)
+    // Vérifier que c'est une formule AST ou SQL
     const clientAstOverride = (config as unknown as { formulaAstOverride: unknown }).formulaAstOverride as FormulaAst | null;
     const formulaAst = clientAstOverride ?? (config.kpiDefinition.formulaAst as FormulaAst | null);
-    if (!formulaAst) {
-      throw new AppError(400, 'Ce KPI n\'a pas de formule AST configuree', 'NOT_FORMULA_AST');
+    const isSql = config.kpiDefinition.formulaType === 'SQL';
+
+    if (!formulaAst && !isSql) {
+      throw new AppError(400, 'Ce KPI n\'a ni formule AST ni requete SQL configuree', 'NO_FORMULA');
     }
 
     // Résoudre le contexte
@@ -533,8 +533,17 @@ router.get('/source-issues', requireAuth, managerAndAbove, async (req: Authentic
       ...(jiraAccountIds ? { collaboratorId, jiraAccountIds } : {}),
     };
 
-    const calculator = new FormulaAstCalculator();
-    const issues = await calculator.getMatchingIssues(formulaAst, context);
+    let issues;
+    if (isSql) {
+      // KPI SQL : extraire les issues via SqlCalculator
+      const sqlCalc = new SqlCalculator();
+      const finalConfig = { ...(config.kpiDefinition.baseConfig as Record<string, unknown>), ...(config.configOverride as Record<string, unknown> ?? {}) };
+      const sql = (finalConfig as { sql?: string }).sql ?? '';
+      issues = await sqlCalc.getMatchingIssues(sql, context);
+    } else {
+      const calculator = new FormulaAstCalculator();
+      issues = await calculator.getMatchingIssues(formulaAst!, context);
+    }
 
     // Résoudre les display names
     const accountIds = [...new Set(issues.map((i) => i.assigneeJiraAccountId).filter(Boolean))] as string[];
@@ -675,14 +684,43 @@ router.get('/issue-worklogs', requireAuth, managerAndAbove, async (req: Authenti
  * GET /api/kpi/metrics
  * Retourne le catalogue de métriques disponibles pour construire des formules.
  */
-router.get('/metrics', requireAuth, (_req, res) => {
-  res.json(METRICS_CATALOG.map((m) => ({
-    id: m.id,
-    label: m.label,
-    description: m.description,
-    source: m.source,
-    valueType: m.valueType,
-  })));
+router.get('/metrics', requireAuth, async (_req, res) => {
+  const hiddenRaw = await getAppSetting('kpi.metrics.hidden', '');
+  const hiddenSet = new Set(
+    hiddenRaw.split(',').map((s) => s.trim()).filter(Boolean),
+  );
+  res.json(
+    METRICS_CATALOG
+      .filter((m) => !hiddenSet.has(m.id))
+      .map((m) => ({
+        id: m.id,
+        label: m.label,
+        description: m.description,
+        source: m.source,
+        valueType: m.valueType,
+      })),
+  );
+});
+
+/**
+ * GET /api/kpi/metrics/all
+ * Retourne le catalogue complet (admin) avec le flag hidden pour gestion dans Maintenance.
+ */
+router.get('/metrics/all', requireAuth, adminOnly, async (_req, res) => {
+  const hiddenRaw = await getAppSetting('kpi.metrics.hidden', '');
+  const hiddenSet = new Set(
+    hiddenRaw.split(',').map((s) => s.trim()).filter(Boolean),
+  );
+  res.json(
+    METRICS_CATALOG.map((m) => ({
+      id: m.id,
+      label: m.label,
+      description: m.description,
+      source: m.source,
+      valueType: m.valueType,
+      hidden: hiddenSet.has(m.id),
+    })),
+  );
 });
 
 /**

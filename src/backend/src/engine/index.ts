@@ -1,9 +1,7 @@
 import { kpiCalcQueue } from '@/queue';
 import { KpiCalcJobPayload } from '@/types/domain';
 import { resolveConfig } from './configResolver';
-import { getCalculator } from './registry';
 import { SqlCalculator } from './calculators/sql/SqlCalculator';
-import { JqlCalculator } from './calculators/jql/JqlCalculator';
 import { FormulaAstCalculator } from './formula/FormulaAstCalculator';
 import type { FormulaAst } from './formula/types';
 import { prisma } from '@/db/prisma';
@@ -12,7 +10,6 @@ import { generatePeriods } from '@/utils/periods';
 import { QueryCollector } from './queryCapture';
 
 const sqlCalculator = new SqlCalculator();
-const jqlCalculator = new JqlCalculator();
 const formulaAstCalculator = new FormulaAstCalculator();
 
 /**
@@ -94,8 +91,6 @@ export async function runKpiCalculationForClient(clientId: number, targetPeriod?
     const hasFormula = kpiConfig.formulaOverride
       || clientAstOverride
       || (def.formulaType === 'FORMULA_AST' && def.formulaAst)
-      || (def.formulaType === 'PREDEFINED' && def.predefinedType)
-      || def.formulaType === 'JQL'
       || def.formulaType === 'SQL';
 
     if (!hasFormula) {
@@ -217,7 +212,7 @@ async function getActiveCollaborators(
 }
 
 type KpiConfigWithRelations = Awaited<ReturnType<typeof prisma.kpiClientConfig.findMany>>[0] & {
-  kpiDefinition: { formulaType: string; predefinedType: string | null; baseConfig: unknown; formulaAst: unknown };
+  kpiDefinition: { formulaType: string; baseConfig: unknown; formulaAst: unknown };
   aiFieldRules: Array<{ fieldValue: string | null; rule: string }>;
 };
 
@@ -235,10 +230,6 @@ async function calculateAndStoreKpi(
     def.baseConfig as Record<string, unknown>,
     kpiConfig.configOverride as Record<string, unknown>,
   );
-
-  if (def.predefinedType === 'COUNT_WITH_AI') {
-    (finalConfig as Record<string, unknown>).aiRules = kpiConfig.aiFieldRules;
-  }
 
   // Mode debug : injecter le collecteur uniquement pour le global et/ou le collaborateur ciblé
   const cfgDebug = kpiConfig as unknown as { debugMode?: boolean; debugCollaboratorId?: number | null };
@@ -282,15 +273,10 @@ async function calculateAndStoreKpi(
   } else if (def.formulaType === 'FORMULA_AST' && def.formulaAst) {
     result = await formulaAstCalculator.calculate(def.formulaAst as FormulaAst, context);
     formulaDescription = buildFormulaDescription(def.formulaAst as FormulaAst);
-  } else if (def.formulaType === 'PREDEFINED' && def.predefinedType) {
-    result = await getCalculator(def.predefinedType).calculate(finalConfig, context);
-    formulaDescription = `Predefined: ${def.predefinedType}`;
-  } else if (def.formulaType === 'JQL') {
-    const jql = (def.baseConfig as { jql?: string }).jql ?? '';
-    result = await jqlCalculator.calculate(jql, finalConfig, context);
-    formulaDescription = `JQL: ${jql}`;
   } else if (def.formulaType === 'SQL') {
-    const sql = (def.baseConfig as { sql?: string }).sql ?? '';
+    const sql = (finalConfig as { sql?: string }).sql
+      ?? (def.baseConfig as { sql?: string }).sql
+      ?? '';
     result = await sqlCalculator.calculate(sql, context);
     formulaDescription = `SQL: ${sql.substring(0, 200)}`;
   } else {

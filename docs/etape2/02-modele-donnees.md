@@ -309,8 +309,7 @@ erDiagram
         string name
         string description
         string unit
-        enum formulaType "PREDEFINED|JQL|SQL|FORMULA_AST"
-        string predefinedType
+        enum formulaType "FORMULA_AST|JQL|SQL"
         json baseConfig
         json configSchema
         json formulaAst "arbre AST pour FORMULA_AST"

@@ -121,147 +121,7 @@ async function main() {
   }
   console.log(`  ✓ Project: ${project.jiraProjectName}`);
 
-  // ── Définition KPI : Taux de dépassement (formule guidée) ────────────────
-  // Formule : (consommé_rollup + restant_rollup - estimé_rollup) / estimé_rollup × 100
-  // Inclut le remaining estimate pour projeter le dépassement sur les tickets en cours
-  const tauxDepassementAst = {
-    version: 1,
-    expression: {
-      type: 'function',
-      name: 'ratio',
-      args: [
-        {
-          type: 'function',
-          name: 'subtract',
-          args: [
-            {
-              type: 'function',
-              name: 'add',
-              args: [
-                { type: 'function', name: 'sum', args: [{ type: 'metric', id: 'rollup_consomme' }] },
-                { type: 'function', name: 'sum', args: [{ type: 'metric', id: 'rollup_restant' }] },
-              ],
-            },
-            { type: 'function', name: 'sum', args: [{ type: 'metric', id: 'rollup_estime' }] },
-          ],
-        },
-        { type: 'function', name: 'sum', args: [{ type: 'metric', id: 'rollup_estime' }] },
-      ],
-    },
-    filters: {
-      scopeRule: { type: 'worklogs_in_period_with_children' },
-      includeSubtasks: false,
-    },
-  };
-
-  let kpiDef = await prisma.kpiDefinition.findFirst({ where: { name: 'Taux de dépassement' } });
-  if (!kpiDef) {
-    kpiDef = await prisma.kpiDefinition.create({
-      data: {
-        name: 'Taux de dépassement',
-        description: 'Ecart entre le temps consommé et le temps estimé, incluant les sous-tâches. Formule : (consommé - estimé) / estimé × 100',
-        unit: '%',
-        formulaType: 'FORMULA_AST',
-        baseConfig: {},
-        formulaAst: tauxDepassementAst,
-        defaultThresholdGreenMax: 10,
-        defaultThresholdOrangeMin: 10,
-        defaultThresholdOrangeMax: 30,
-        defaultThresholdRedMin: 30,
-        isSystem: true,
-      } as any,
-    });
-  }
-
-  await prisma.kpiClientConfig.upsert({
-    where: { kpiDefinitionId_clientId: { kpiDefinitionId: kpiDef.id, clientId: client.id } },
-    create: {
-      kpiDefinitionId: kpiDef.id,
-      clientId: client.id,
-      isActive: true,
-      formulaVersion: '1.0',
-      thresholdGreenMax: 10,
-      thresholdOrangeMin: 10,
-      thresholdOrangeMax: 30,
-      thresholdRedMin: 30,
-    },
-    update: {},
-  });
-  console.log('  ✓ KPI definition: Taux de dépassement');
-
-  // ── Définition KPI : Taux de dépassement v2 (tickets livrés, fenêtre glissante) ──
-  // Formule : (consommé_rollup + restant_rollup - estimé_rollup) / estimé_rollup × 100
-  // Portée : tickets ayant transitionné vers statuts cibles sur une fenêtre glissante
-  const tauxDepassementV2Ast = {
-    version: 1,
-    expression: {
-      type: 'function',
-      name: 'ratio',
-      args: [
-        {
-          type: 'function',
-          name: 'subtract',
-          args: [
-            {
-              type: 'function',
-              name: 'add',
-              args: [
-                { type: 'function', name: 'sum', args: [{ type: 'metric', id: 'rollup_consomme' }] },
-                { type: 'function', name: 'sum', args: [{ type: 'metric', id: 'rollup_restant' }] },
-              ],
-            },
-            { type: 'function', name: 'sum', args: [{ type: 'metric', id: 'rollup_estime' }] },
-          ],
-        },
-        { type: 'function', name: 'sum', args: [{ type: 'metric', id: 'rollup_estime' }] },
-      ],
-    },
-    filters: {
-      scopeRule: {
-        type: 'status_in_period',
-        statuses: ['LIVRE EN PRODUCTION', 'LIVRE EN PREPRODUCTION', 'Realisation terminee'],
-        slidingWindowMonths: 3,
-      },
-      includeSubtasks: false,
-    },
-  };
-
-  let kpiDefV2 = await prisma.kpiDefinition.findFirst({ where: { name: 'Taux de dépassement v2 - Tickets livrés' } });
-  if (!kpiDefV2) {
-    kpiDefV2 = await prisma.kpiDefinition.create({
-      data: {
-        name: 'Taux de dépassement v2 - Tickets livrés',
-        description: 'Écart (%) basé sur rollups pour tickets livrés sur fenêtre glissante: (consommé + restant - estimé) / estimé × 100',
-        unit: '%',
-        formulaType: 'FORMULA_AST',
-        baseConfig: {},
-        formulaAst: tauxDepassementV2Ast,
-        defaultThresholdGreenMax: 10,
-        defaultThresholdOrangeMin: 10,
-        defaultThresholdOrangeMax: 30,
-        defaultThresholdRedMin: 30,
-        isSystem: true,
-      } as any,
-    });
-  }
-
-  await prisma.kpiClientConfig.upsert({
-    where: { kpiDefinitionId_clientId: { kpiDefinitionId: kpiDefV2.id, clientId: client.id } },
-    create: {
-      kpiDefinitionId: kpiDefV2.id,
-      clientId: client.id,
-      isActive: true,
-      formulaVersion: '1.0',
-      thresholdGreenMax: 10,
-      thresholdOrangeMin: 10,
-      thresholdOrangeMax: 30,
-      thresholdRedMin: 30,
-    },
-    update: {},
-  });
-  console.log('  ✓ KPI definition: Taux de dépassement v2 - Tickets livrés');
-
-  // ── KPI : Taux de retouche ──────────────────────────────────────────────
+  // ── KPI 1 : Taux de retouche (AST) ──────────────────────────────────────
   // Formule : temps consommé sur les retours / temps consommé total × 100
   const tauxRetoucheAst = {
     version: 1,
@@ -269,14 +129,39 @@ async function main() {
       type: 'function',
       name: 'ratio',
       args: [
-        { type: 'function', name: 'sum', args: [{ type: 'metric', id: 'consomme_retours' }] },
-        { type: 'function', name: 'sum', args: [{ type: 'metric', id: 'rollup_consomme' }] },
+        {
+          type: 'function', name: 'sum', args: [{ type: 'metric', id: 'consomme_retours' }],
+          filters: {
+            scopeRule: { type: 'worklogs_in_period' },
+
+            customFieldLogic: 'AND',
+            customFieldFilters: [
+              {
+                value: ['Support de l\'IA', 'Code généré par l\'IA', 'Conçu et réalisé par l\'IA'],
+                fieldId: 'customfield_13378',
+                operator: 'in',
+              },
+            ],
+          },
+        },
+        {
+          type: 'function', name: 'sum', args: [{ type: 'metric', id: 'rollup_consomme' }],
+          filters: {
+            scopeRule: { type: 'worklogs_in_period' },
+
+            customFieldLogic: 'AND',
+            customFieldFilters: [
+              {
+                value: ['Support de l\'IA', 'Code généré par l\'IA', 'Conçu et réalisé par l\'IA'],
+                fieldId: 'customfield_13378',
+                operator: 'in',
+              },
+            ],
+          },
+        },
       ],
     },
-    filters: {
-      scopeRule: { type: 'worklogs_in_period_with_children' },
-      includeSubtasks: false,
-    },
+    filters: {},
   };
 
   let kpiRetouche = await prisma.kpiDefinition.findFirst({ where: { name: 'Taux de retouche' } });
@@ -314,7 +199,7 @@ async function main() {
   });
   console.log('  ✓ KPI definition: Taux de retouche');
 
-  // ── KPI : First Time Right ──────────────────────────────────────────────
+  // ── KPI 2 : First Time Right (AST) ─────────────────────────────────────
   // Formule : tickets dev sans retour / tickets dev total × 100
   const firstTimeRightAst = {
     version: 1,
@@ -322,14 +207,23 @@ async function main() {
       type: 'function',
       name: 'ratio',
       args: [
-        { type: 'function', name: 'sum', args: [{ type: 'metric', id: 'nb_tickets_sans_retour' }] },
-        { type: 'function', name: 'sum', args: [{ type: 'metric', id: 'nb_tickets_dev' }] },
+        {
+          type: 'function', name: 'sum', args: [{ type: 'metric', id: 'nb_tickets_sans_retour' }],
+          filters: {
+            scopeRule: { type: 'resolved_in_period' },
+
+          },
+        },
+        {
+          type: 'function', name: 'sum', args: [{ type: 'metric', id: 'nb_tickets_dev' }],
+          filters: {
+            scopeRule: { type: 'resolved_in_period' },
+
+          },
+        },
       ],
     },
-    filters: {
-      scopeRule: { type: 'resolved_in_period' },
-      includeSubtasks: false,
-    },
+    filters: {},
   };
 
   let kpiFtr = await prisma.kpiDefinition.findFirst({ where: { name: 'First Time Right' } });
@@ -367,6 +261,280 @@ async function main() {
   });
   console.log('  ✓ KPI definition: First Time Right');
 
+  // ── KPI 3 : Taux de dépassement (AST — tickets livrés, fenêtre glissante) ──
+  // Formule : (consommé_rollup + restant_rollup - estimé_rollup) / estimé_rollup × 100
+  const tauxDepassementAst = {
+    version: 1,
+    expression: {
+      type: 'function',
+      name: 'ratio',
+      args: [
+        {
+          type: 'function',
+          name: 'subtract',
+          args: [
+            {
+              type: 'function',
+              name: 'add',
+              args: [
+                {
+                  type: 'function', name: 'sum', args: [{ type: 'metric', id: 'rollup_consomme' }],
+                  filters: {
+                    scopeRule: {
+                      type: 'status_in_period',
+                      statuses: ['LIVRE EN PRODUCTION', 'LIVRE EN PREPRODUCTION', 'Realisation terminee'],
+                      slidingWindowMonths: 3,
+                    },
+        
+                  },
+                },
+                {
+                  type: 'function', name: 'sum', args: [{ type: 'metric', id: 'rollup_restant' }],
+                  filters: {
+                    scopeRule: {
+                      type: 'status_in_period',
+                      statuses: ['LIVRE EN PRODUCTION', 'LIVRE EN PREPRODUCTION', 'Realisation terminee'],
+                      slidingWindowMonths: 3,
+                    },
+        
+                  },
+                },
+              ],
+            },
+            {
+              type: 'function', name: 'sum', args: [{ type: 'metric', id: 'rollup_estime' }],
+              filters: {
+                scopeRule: {
+                  type: 'status_in_period',
+                  statuses: ['LIVRE EN PRODUCTION', 'LIVRE EN PREPRODUCTION', 'Realisation terminee'],
+                  slidingWindowMonths: 3,
+                },
+    
+              },
+            },
+          ],
+        },
+        {
+          type: 'function', name: 'sum', args: [{ type: 'metric', id: 'rollup_estime' }],
+          filters: {
+            scopeRule: {
+              type: 'status_in_period',
+              statuses: ['LIVRE EN PRODUCTION', 'LIVRE EN PREPRODUCTION', 'Realisation terminee'],
+              slidingWindowMonths: 3,
+            },
+
+          },
+        },
+      ],
+    },
+    filters: {},
+  };
+
+  let kpiDepassement = await prisma.kpiDefinition.findFirst({ where: { name: 'Taux de dépassement' } });
+  if (!kpiDepassement) {
+    kpiDepassement = await prisma.kpiDefinition.create({
+      data: {
+        name: 'Taux de dépassement',
+        description: 'Écart (%) basé sur rollups pour tickets livrés sur fenêtre glissante: (consommé + restant - estimé) / estimé × 100',
+        unit: '%',
+        formulaType: 'FORMULA_AST',
+        baseConfig: {},
+        formulaAst: tauxDepassementAst,
+        defaultThresholdGreenMax: 10,
+        defaultThresholdOrangeMin: 10,
+        defaultThresholdOrangeMax: 30,
+        defaultThresholdRedMin: 30,
+        isSystem: false,
+      } as any,
+    });
+  }
+
+  await prisma.kpiClientConfig.upsert({
+    where: { kpiDefinitionId_clientId: { kpiDefinitionId: kpiDepassement.id, clientId: client.id } },
+    create: {
+      kpiDefinitionId: kpiDepassement.id,
+      clientId: client.id,
+      isActive: true,
+      formulaVersion: '1.0',
+      thresholdGreenMax: 10,
+      thresholdOrangeMin: 10,
+      thresholdOrangeMax: 30,
+      thresholdRedMin: 30,
+    },
+    update: {},
+  });
+  console.log('  ✓ KPI definition: Taux de dépassement');
+
+  // ── KPI 4 : Taux de tickets IA (AST) ───────────────────────────────────
+  // Formule : count(issues avec champ IA) / count(issues réalisation terminée) × 100
+  const tauxTicketsIaAst = {
+    version: 1,
+    expression: {
+      type: 'function',
+      name: 'ratio',
+      args: [
+        {
+          type: 'function',
+          name: 'count',
+          args: [{ type: 'metric', id: 'nb_issues' }],
+          filters: {
+            scopeRule: {
+              type: 'status_in_period',
+              statuses: ['Réalisation terminée'],
+              slidingWindowMonths: 1,
+            },
+            customFieldLogic: 'AND',
+            customFieldFilters: [
+              {
+                value: ['Support de l\'IA', 'Code généré par l\'IA', 'Conçu et réalisé par l\'IA'],
+                fieldId: 'customfield_13378',
+                operator: 'in',
+              },
+            ],
+          },
+        },
+        {
+          type: 'function',
+          name: 'count',
+          args: [{ type: 'metric', id: 'nb_issues' }],
+          filters: {
+            scopeRule: {
+              type: 'status_in_period',
+              statuses: ['Réalisation terminée'],
+              slidingWindowMonths: 1,
+            },
+          },
+        },
+      ],
+    },
+    filters: {},
+  };
+
+  let kpiTicketsIA = await prisma.kpiDefinition.findFirst({ where: { name: 'Taux de tickets IA' } });
+  if (!kpiTicketsIA) {
+    kpiTicketsIA = await prisma.kpiDefinition.create({
+      data: {
+        name: 'Taux de tickets IA',
+        description: null,
+        unit: '%',
+        formulaType: 'FORMULA_AST',
+        baseConfig: {},
+        formulaAst: tauxTicketsIaAst,
+        defaultThresholdGreenMax: null,
+        defaultThresholdOrangeMin: 20,
+        defaultThresholdOrangeMax: 50,
+        defaultThresholdRedMin: null,
+        isSystem: false,
+      } as any,
+    });
+  }
+
+  await prisma.kpiClientConfig.upsert({
+    where: { kpiDefinitionId_clientId: { kpiDefinitionId: kpiTicketsIA.id, clientId: client.id } },
+    create: {
+      kpiDefinitionId: kpiTicketsIA.id,
+      clientId: client.id,
+      isActive: true,
+      formulaVersion: '1.0',
+    },
+    update: {},
+  });
+  console.log('  ✓ KPI definition: Taux de tickets IA');
+
+  // ── KPI 5 : Depassement SQL ─────────────────────────────────────────────
+  // Version SQL du taux de dépassement avec scope collaborateur
+  const depassementSql = `SELECT
+  ROUND(
+    (SUM(COALESCE(i.rollupTimeSpentHours, 0) + COALESCE(i.rollupRemainingHours, 0))
+     - SUM(COALESCE(i.rollupEstimateHours, 0)))
+    / NULLIF(SUM(COALESCE(i.rollupEstimateHours, 0)), 0) * 100
+  , 4) AS value,
+  COUNT(*) AS ticketCount
+FROM issues i
+WHERE i.clientId = :client_id
+  AND i.projectId IN (:project_ids)
+  AND i.issueType != 'Sub-task'
+  AND EXISTS (
+    SELECT 1 FROM issue_transitions t
+    WHERE t.issueId = i.id
+      AND t.toStatus IN ('LIVRE EN PRODUCTION', 'LIVRE EN PREPRODUCTION', 'Realisation terminee')
+      AND t.changedAt >= DATE_FORMAT(DATE_SUB(:period_start, INTERVAL 2 MONTH), '%Y-%m-01')
+      AND t.changedAt <= :period_end
+  )
+  AND (:collaborator_id IS NULL OR i.assigneeJiraAccountId IN (:jira_account_ids))`;
+
+  let kpiDepassementSql = await prisma.kpiDefinition.findFirst({ where: { name: 'Depassement SQL' } });
+  if (!kpiDepassementSql) {
+    kpiDepassementSql = await prisma.kpiDefinition.create({
+      data: {
+        name: 'Depassement SQL',
+        description: 'Taux de dépassement par rapport à l\'estimation initiale — version SQL avec scope collaborateur',
+        unit: '%',
+        formulaType: 'SQL',
+        baseConfig: { sql: depassementSql },
+        formulaAst: null,
+        isSystem: false,
+      } as any,
+    });
+  }
+
+  await prisma.kpiClientConfig.upsert({
+    where: { kpiDefinitionId_clientId: { kpiDefinitionId: kpiDepassementSql.id, clientId: client.id } },
+    create: {
+      kpiDefinitionId: kpiDepassementSql.id,
+      clientId: client.id,
+      isActive: true,
+      formulaVersion: '1.0',
+    },
+    update: {},
+  });
+  console.log('  ✓ KPI definition: Depassement SQL');
+
+  // ── KPI 6 : Taux de retouche SQL ────────────────────────────────────────
+  // Version SQL du taux de retouche
+  const retoucheSql = `SELECT
+  ROUND(
+    SUM(CASE WHEN il.id IS NOT NULL THEN COALESCE(i.rollupTimeSpentSeconds, 0) ELSE 0 END)
+    / NULLIF(SUM(COALESCE(i.rollupTimeSpentSeconds, 0)), 0) * 100
+  , 1) AS value,
+  COUNT(DISTINCT i.id) AS ticketCount
+FROM issues i
+JOIN worklogs w ON w.issueId = i.id
+  AND w.startedAt BETWEEN :period_start AND :period_end
+LEFT JOIN issue_links il ON il.sourceIssueId = i.id
+  AND il.linkType = 'Origine du bug (recit ou bug)'
+WHERE i.clientId = :client_id
+  AND i.parentJiraId IS NULL
+  AND (:collaborator_id IS NULL OR i.assigneeJiraAccountId IN (:jira_account_ids))
+GROUP BY NULL`;
+
+  let kpiRetoucheSql = await prisma.kpiDefinition.findFirst({ where: { name: 'Taux de retouche SQL' } });
+  if (!kpiRetoucheSql) {
+    kpiRetoucheSql = await prisma.kpiDefinition.create({
+      data: {
+        name: 'Taux de retouche SQL',
+        description: 'Ratio temps consommé sur retours vs temps total — version SQL',
+        unit: '%',
+        formulaType: 'SQL',
+        baseConfig: { sql: retoucheSql },
+        formulaAst: null,
+        isSystem: false,
+      } as any,
+    });
+  }
+
+  await prisma.kpiClientConfig.upsert({
+    where: { kpiDefinitionId_clientId: { kpiDefinitionId: kpiRetoucheSql.id, clientId: client.id } },
+    create: {
+      kpiDefinitionId: kpiRetoucheSql.id,
+      clientId: client.id,
+      isActive: true,
+      formulaVersion: '1.0',
+    },
+    update: {},
+  });
+  console.log('  ✓ KPI definition: Taux de retouche SQL');
+
   // ── Paramètres applicatifs (app_settings) ─────────────────────────────────
   const defaultSettings = [
     { key: 'kpi.debug.maxTracesPerConfig', value: '10',   description: 'Nombre max de traces debug conservees par config KPI (FIFO)' },
@@ -376,6 +544,11 @@ async function main() {
       key: 'kpi.formula.statusInPeriod.globalFallbackStatuses',
       value: 'Done, Closed, Resolved, Realisation terminee',
       description: 'Statuts cibles proposes en definition KPI globale quand aucune connexion JIRA de reference n\'est selectionnee',
+    },
+    {
+      key: 'kpi.metrics.hidden',
+      value: '',
+      description: 'IDs de metriques a masquer dans l\'editeur de formules (separes par virgule). Ex: temps_restant, nb_worklogs',
     },
   ];
 

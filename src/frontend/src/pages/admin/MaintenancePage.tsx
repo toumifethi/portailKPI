@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { clientsApi, maintenanceApi, settingsApi } from '@/api/endpoints';
+import { clientsApi, maintenanceApi, settingsApi, kpiApi } from '@/api/endpoints';
 
 const DATA_TYPES = [
   { key: 'worklogs', label: 'Worklogs', hint: 'startedAt < date seuil' },
@@ -137,7 +137,149 @@ export default function MaintenancePage() {
         )}
       </div>
 
+      <MetricsVisibilitySection />
       <AppSettingsSection />
+    </div>
+  );
+}
+
+// ── Visibilité des métriques ─────────────────────────────────────────────────
+
+function MetricsVisibilitySection() {
+  const qc = useQueryClient();
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const { data: allMetrics = [], isLoading } = useQuery({
+    queryKey: ['all-metrics-admin'],
+    queryFn: kpiApi.getAllMetrics,
+    staleTime: 30_000,
+  });
+
+  const [localHidden, setLocalHidden] = useState<Set<string>>(new Set());
+  const [initialized, setInitialized] = useState(false);
+
+  // Sync local state when data loads
+  if (allMetrics.length > 0 && !initialized) {
+    setLocalHidden(new Set(allMetrics.filter((m) => m.hidden).map((m) => m.id)));
+    setInitialized(true);
+  }
+
+  const serverHidden = new Set(allMetrics.filter((m) => m.hidden).map((m) => m.id));
+  const isDirty = initialized && (
+    localHidden.size !== serverHidden.size ||
+    [...localHidden].some((id) => !serverHidden.has(id))
+  );
+
+  function toggle(id: string) {
+    setLocalHidden((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await settingsApi.update('kpi.metrics.hidden', [...localHidden].join(', '));
+      qc.invalidateQueries({ queryKey: ['all-metrics-admin'] });
+      qc.invalidateQueries({ queryKey: ['kpi-metrics'] });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const sourceGroups = [
+    { label: 'Temps (issues)', ids: ['consomme', 'estime', 'rollup_consomme', 'rollup_estime', 'temps_restant', 'rollup_restant'] },
+    { label: 'Compteurs (issues)', ids: ['nb_issues', 'nb_bugs', 'nb_stories', 'nb_sans_estimation', 'story_points'] },
+    { label: 'Worklogs', ids: ['temps_logue', 'temps_logue_auteur', 'nb_worklogs'] },
+    { label: 'Qualite', ids: ['nb_retours', 'nb_tickets_dev', 'nb_tickets_sans_retour', 'consomme_retours'] },
+  ];
+
+  return (
+    <div style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: 8, padding: 24, marginTop: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 700, color: '#374151', margin: 0 }}>Metriques exposees</h2>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {saved && <span style={{ fontSize: 11, color: '#059669', fontWeight: 600 }}>Enregistre</span>}
+          <button
+            onClick={handleSave}
+            disabled={!isDirty || saving}
+            style={{
+              padding: '5px 14px', fontSize: 12, fontWeight: 600, borderRadius: 4, cursor: isDirty ? 'pointer' : 'not-allowed',
+              border: 'none', background: isDirty ? '#4f46e5' : '#e5e7eb', color: isDirty ? 'white' : '#9ca3af',
+            }}
+          >
+            {saving ? 'Enregistrement...' : 'Enregistrer'}
+          </button>
+        </div>
+      </div>
+      <p style={{ fontSize: 12, color: '#6b7280', margin: '0 0 16px' }}>
+        Cochez les metriques visibles dans l'editeur de formules KPI. Les metriques decochees ne seront plus proposees.
+      </p>
+
+      {isLoading && <div style={{ fontSize: 13, color: '#9ca3af' }}>Chargement...</div>}
+
+      {sourceGroups.map((group) => {
+        const metrics = group.ids
+          .map((id) => allMetrics.find((m) => m.id === id))
+          .filter(Boolean) as (typeof allMetrics)[number][];
+        if (metrics.length === 0) return null;
+
+        return (
+          <div key={group.label} style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>{group.label}</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {metrics.map((m) => {
+                const visible = !localHidden.has(m.id);
+                return (
+                  <label key={m.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer',
+                    padding: '4px 10px', borderRadius: 5,
+                    background: visible ? '#dbeafe' : '#f3f4f6',
+                    color: visible ? '#1d4ed8' : '#9ca3af',
+                    border: visible ? '1px solid #93c5fd' : '1px solid #e5e7eb',
+                    textDecoration: visible ? 'none' : 'line-through',
+                  }}>
+                    <input type="checkbox" checked={visible} onChange={() => toggle(m.id)}
+                      style={{ accentColor: '#4f46e5', width: 13, height: 13 }} />
+                    {m.label}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Métriques non classées (si le catalogue évolue) */}
+      {allMetrics.filter((m) => !sourceGroups.some((g) => g.ids.includes(m.id))).length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>Autres</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {allMetrics.filter((m) => !sourceGroups.some((g) => g.ids.includes(m.id))).map((m) => {
+              const visible = !localHidden.has(m.id);
+              return (
+                <label key={m.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer',
+                  padding: '4px 10px', borderRadius: 5,
+                  background: visible ? '#dbeafe' : '#f3f4f6',
+                  color: visible ? '#1d4ed8' : '#9ca3af',
+                  border: visible ? '1px solid #93c5fd' : '1px solid #e5e7eb',
+                  textDecoration: visible ? 'none' : 'line-through',
+                }}>
+                  <input type="checkbox" checked={visible} onChange={() => toggle(m.id)}
+                    style={{ accentColor: '#4f46e5', width: 13, height: 13 }} />
+                  {m.label}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

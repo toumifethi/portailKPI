@@ -146,7 +146,6 @@ export const kpiApi = {
     description?: string;
     unit?: string;
     formulaType: string;
-    predefinedType?: string;
     baseConfig?: Record<string, unknown>;
     formulaAst?: Record<string, unknown>;
     targetProfileIds?: number[];
@@ -179,6 +178,8 @@ export const kpiApi = {
     }>('/kpi/issue-worklogs', { params: { issueId, ...(period ? { period } : {}) } }).then((r) => r.data),
   getMetrics: () =>
     apiClient.get<MetricInfo[]>('/kpi/metrics').then((r) => r.data),
+  getAllMetrics: () =>
+    apiClient.get<(MetricInfo & { hidden: boolean })[]>('/kpi/metrics/all').then((r) => r.data),
   validateFormula: (formulaAst: unknown) =>
     apiClient.post<FormulaValidationResult>('/kpi/validate-formula', formulaAst).then((r) => r.data),
   testFormula: (formulaAst: unknown, clientId: number, period: string) =>

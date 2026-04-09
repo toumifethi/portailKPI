@@ -8,7 +8,6 @@ export type Role = 'ADMIN' | 'DELIVERY_MANAGER' | 'CHEF_DE_PROJET' | 'DEVELOPPEU
 
 export interface FinalKpiConfig {
   // Communs à tous les KPI
-  done_statuses?: string[];
   included_issue_types?: string[];
   excluded_issue_types?: string[];
   estimate_field?: string;
@@ -17,20 +16,7 @@ export interface FinalKpiConfig {
   aggregation_rule?: 'AVG' | 'SUM';
   period_type?: 'MONTHLY' | 'QUARTERLY' | 'YEARLY';
 
-  // KPI Qualité (RATIO_RETOURS)
-  return_link_type?: string;
-  return_internal_issue_types?: string[];
-  return_client_issue_types?: string[];
-  return_imputation_field?: string; // champ JIRA lu sur le ticket principal (cf. RMG-041bis)
-
-  // KPI Tickets sans estimation (COUNT_WITHOUT_ESTIMATE)
-  in_progress_statuses?: string[];
-
-  // KPI Tickets avec IA (COUNT_WITH_AI)
-  ai_field_id?: string;
-
-  // JQL / SQL
-  jql?: string;
+  // SQL
   sql?: string;
 
   // Autres paramètres libres
@@ -79,35 +65,12 @@ export type ExclusionReason =
   | 'EXCLUDED_TYPE'
   | 'EXCLUDED_STATUS';
 
-// ---- Issue enrichie pour le calcul ----
-
-export interface IssueForCalc {
-  id: number;
-  jiraKey: string;
-  issueType: string;
-  status: string;
-  assigneeUserId: number | null;
-  assigneeJiraAccountId: string | null;
-  originalEstimateHours: number | null;
-  timeSpentSeconds: number;
-  customFields: Record<string, unknown>;
-  worklogs: WorklogForCalc[];
-  returnTickets?: ReturnTicketForCalc[];
-}
-
-export interface WorklogForCalc {
-  authorUserId: number | null;
-  authorJiraAccountId: string;
-  timeSpentSeconds: number;
-  startedAt: Date;
-}
-
-export interface ReturnTicketForCalc {
-  jiraKey: string;
-  issueType: string;
-  totalTimeSpentSeconds: number;
-  assigneeJiraAccountId: string | null;
-}
+export const EMPTY_RESULT: KpiCalculationResult = {
+  value: null,
+  ticketCount: 0,
+  excludedTicketCount: 0,
+  excludedTicketDetails: [],
+};
 
 // ---- Field mapping per JIRA connection ----
 

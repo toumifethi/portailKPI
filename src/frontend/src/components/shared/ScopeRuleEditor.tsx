@@ -19,14 +19,8 @@ const SCOPE_TYPES = [
   {
     type: 'worklogs_in_period' as const,
     label: 'Avec worklogs dans la periode',
-    description: 'Issues sur lesquelles au moins un worklog a ete enregistre dans le mois. Ne remonte pas aux parents si le worklog est sur une sous-tache.',
+    description: 'Issues ayant un worklog dans le mois, OU dont une sous-tache a un worklog dans le mois. Inclut automatiquement les parents dont une sous-tache a logue du temps.',
     icon: '⏱️',
-  },
-  {
-    type: 'worklogs_in_period_with_children' as const,
-    label: 'Avec worklogs (incluant sous-taches)',
-    description: 'Issues ayant un worklog dans le mois, OU dont une sous-tache a un worklog dans le mois. Recommande pour les KPI de charge avec des sous-taches. A combiner avec les metriques rollup et includeSubtasks: false.',
-    icon: '⏱️📎',
   },
   {
     type: 'created_in_period' as const,
@@ -156,7 +150,6 @@ export function ScopeRuleEditor({ value, onChange, clientId, globalJiraContext }
       case 'resolved_in_period':
       case 'updated_in_period':
       case 'worklogs_in_period':
-      case 'worklogs_in_period_with_children':
       case 'created_in_period':
       case 'sprint_in_period':
         onChange({ type } as ScopeRule);
@@ -447,7 +440,6 @@ const SIMPLE_RULES: Array<{ type: ScopeRule['type']; label: string }> = [
   { type: 'resolved_in_period', label: 'Resolues' },
   { type: 'updated_in_period', label: 'Mises a jour' },
   { type: 'worklogs_in_period', label: 'Avec worklogs' },
-  { type: 'worklogs_in_period_with_children', label: 'Avec worklogs (+ sous-taches)' },
   { type: 'created_in_period', label: 'Creees' },
   { type: 'sprint_in_period', label: 'Dans un sprint' },
 ];

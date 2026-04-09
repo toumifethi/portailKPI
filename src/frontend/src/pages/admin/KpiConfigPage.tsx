@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { kpiApi, profilesApi } from '@/api/endpoints';
 import type { KpiDefinition, FormulaAst } from '@/types';
 import { FormulaEditor } from '@/components/shared/FormulaEditor';
+import { SqlHighlightEditor } from '@/components/shared/SqlHighlightEditor';
 
 // ── Types locaux ─────────────────────────────────────────────────────────────
 
@@ -116,14 +117,15 @@ function EditKpiModal({ def, onClose }: { def: KpiDefinition; onClose: () => voi
   const [name, setName] = useState(def.name);
   const [description, setDescription] = useState(def.description ?? '');
   const [unit, setUnit] = useState(def.unit ?? '');
-  const [formulaType, setFormulaType] = useState<'PREDEFINED' | 'FORMULA_AST' | 'JQL' | 'SQL'>(
-    def.formulaType as 'PREDEFINED' | 'FORMULA_AST' | 'JQL' | 'SQL',
+  const [formulaType, setFormulaType] = useState<'FORMULA_AST' | 'SQL'>(
+    def.formulaType as 'FORMULA_AST' | 'SQL',
   );
-  const [predefinedType, setPredefinedType] = useState(def.predefinedType ?? '');
   const [formulaAst, setFormulaAst] = useState<FormulaAst | null>(
     (def as unknown as { formulaAst: FormulaAst | null }).formulaAst ?? null,
   );
   const defAny = def as unknown as Record<string, unknown>;
+  const baseConfig = (defAny.baseConfig ?? {}) as Record<string, unknown>;
+  const [sqlQuery, setSqlQuery] = useState((baseConfig.sql as string) ?? '');
   const existingTargetIds = ((defAny.targetProfiles as Array<{ profileId: number }>) ?? []).map((tp) => tp.profileId);
   const [targetProfileIds, setTargetProfileIds] = useState<Set<number>>(new Set(existingTargetIds));
   const [thresholds, setThresholds] = useState<ThresholdForm>({
@@ -142,8 +144,8 @@ function EditKpiModal({ def, onClose }: { def: KpiDefinition; onClose: () => voi
         description: description || undefined,
         unit: unit || undefined,
         formulaType,
-        predefinedType: formulaType === 'PREDEFINED' && predefinedType ? predefinedType : undefined,
         ...(formulaType === 'FORMULA_AST' && formulaAst ? { formulaAst: formulaAst as unknown as Record<string, unknown> } : {}),
+        ...(formulaType === 'SQL' ? { baseConfig: { sql: sqlQuery } } : {}),
         targetProfileIds: [...targetProfileIds],
         defaultThresholdRedMin: toNum(thresholds.redMin),
         defaultThresholdRedMax: toNum(thresholds.redMax),
@@ -165,17 +167,23 @@ function EditKpiModal({ def, onClose }: { def: KpiDefinition; onClose: () => voi
   };
 
   const isAst = formulaType === 'FORMULA_AST';
-  const [modalTab, setModalTab] = useState<'general' | 'expression' | 'perimetre' | 'filtres' | 'profils'>('general');
+  const isSql = formulaType === 'SQL';
+  const [modalTab, setModalTab] = useState<'general' | 'expression' | 'sql' | 'profils'>('general');
 
   const MODAL_TABS = [
     { id: 'general' as const, label: 'General' },
     ...(isAst ? [
       { id: 'expression' as const, label: 'Expression' },
-      { id: 'perimetre' as const, label: 'Perimetre' },
-      { id: 'filtres' as const, label: 'Filtres' },
     ] : []),
+    ...(isSql ? [{ id: 'sql' as const, label: 'Requete SQL' }] : []),
     { id: 'profils' as const, label: 'Profils & Seuils' },
   ];
+
+  // Quand on change le type, revenir a l'onglet General
+  const handleFormulaTypeChange = (newType: 'FORMULA_AST' | 'SQL') => {
+    setFormulaType(newType);
+    setModalTab('general');
+  };
 
   return (
     <div
@@ -226,30 +234,34 @@ function EditKpiModal({ def, onClose }: { def: KpiDefinition; onClose: () => voi
               <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)}
                 style={{ ...modalInputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
             </div>
-            <div style={{ display: 'flex', gap: 12 }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 4 }}>Unite</label>
-                <input type="text" value={unit} onChange={(e) => setUnit(e.target.value)}
-                  placeholder="%, h, pts…" style={modalInputStyle} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 4 }}>Type de formule *</label>
-                <select value={formulaType} onChange={(e) => setFormulaType(e.target.value as typeof formulaType)}
-                  style={modalInputStyle}>
-                  <option value="FORMULA_AST">Formule guidee</option>
-                  <option value="PREDEFINED">Predefinie (code)</option>
-                  <option value="JQL">JQL</option>
-                  <option value="SQL">SQL</option>
-                </select>
+            <div>
+              <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 4 }}>Unite</label>
+              <input type="text" value={unit} onChange={(e) => setUnit(e.target.value)}
+                placeholder="%, h, pts…" style={modalInputStyle} />
+            </div>
+            <div>
+              <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 4 }}>Type de formule</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => handleFormulaTypeChange('FORMULA_AST')}
+                  style={{
+                    flex: 1, padding: '8px 12px', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                    border: isAst ? '2px solid #4f46e5' : '1px solid #d1d5db',
+                    background: isAst ? '#eef2ff' : 'white',
+                    color: isAst ? '#4f46e5' : '#6b7280',
+                  }}>
+                  Formule guidee
+                </button>
+                <button onClick={() => handleFormulaTypeChange('SQL')}
+                  style={{
+                    flex: 1, padding: '8px 12px', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                    border: isSql ? '2px solid #4f46e5' : '1px solid #d1d5db',
+                    background: isSql ? '#eef2ff' : 'white',
+                    color: isSql ? '#4f46e5' : '#6b7280',
+                  }}>
+                  SQL brut
+                </button>
               </div>
             </div>
-            {formulaType === 'PREDEFINED' && (
-              <div>
-                <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 4 }}>Type predefini</label>
-                <input type="text" value={predefinedType} onChange={(e) => setPredefinedType(e.target.value.toUpperCase())}
-                  style={{ ...modalInputStyle, fontFamily: 'monospace' }} />
-              </div>
-            )}
           </div>
         )}
 
@@ -257,11 +269,10 @@ function EditKpiModal({ def, onClose }: { def: KpiDefinition; onClose: () => voi
         {modalTab === 'expression' && isAst && (
           <FormulaEditor value={formulaAst} onChange={setFormulaAst} section="expression" />
         )}
-        {modalTab === 'perimetre' && isAst && (
-          <FormulaEditor value={formulaAst} onChange={setFormulaAst} section="perimetre" />
-        )}
-        {modalTab === 'filtres' && isAst && (
-          <FormulaEditor value={formulaAst} onChange={setFormulaAst} section="filtres" />
+
+        {/* Onglet SQL */}
+        {modalTab === 'sql' && isSql && (
+          <SqlHighlightEditor value={sqlQuery} onChange={setSqlQuery} label="Requete SQL" />
         )}
 
         {/* Onglet Profils & Seuils */}
@@ -323,23 +334,29 @@ function CreateKpiModal({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [unit, setUnit] = useState('');
-  const [formulaType, setFormulaType] = useState<'PREDEFINED' | 'FORMULA_AST' | 'JQL' | 'SQL'>('FORMULA_AST');
-  const [predefinedType, setPredefinedType] = useState('');
+  const [formulaType, setFormulaType] = useState<'FORMULA_AST' | 'SQL'>('FORMULA_AST');
   const [formulaAst, setFormulaAst] = useState<FormulaAst | null>(null);
+  const [sqlQuery, setSqlQuery] = useState('');
   const [thresholds, setThresholds] = useState<ThresholdForm>(EMPTY_THRESHOLD);
   const [targetProfileIds, setTargetProfileIds] = useState<Set<number>>(new Set());
-  const [modalTab, setModalTab] = useState<'general' | 'expression' | 'perimetre' | 'filtres' | 'profils'>('general');
 
   const isAst = formulaType === 'FORMULA_AST';
+  const isSql = formulaType === 'SQL';
+  const [modalTab, setModalTab] = useState<'general' | 'expression' | 'sql' | 'profils'>('general');
+
   const MODAL_TABS = [
     { id: 'general' as const, label: 'General' },
     ...(isAst ? [
       { id: 'expression' as const, label: 'Expression' },
-      { id: 'perimetre' as const, label: 'Perimetre' },
-      { id: 'filtres' as const, label: 'Filtres' },
     ] : []),
+    ...(isSql ? [{ id: 'sql' as const, label: 'Requete SQL' }] : []),
     { id: 'profils' as const, label: 'Profils & Seuils' },
   ];
+
+  const handleFormulaTypeChange = (newType: 'FORMULA_AST' | 'SQL') => {
+    setFormulaType(newType);
+    setModalTab('general');
+  };
 
   const createMutation = useMutation({
     mutationFn: () => kpiApi.createDefinition({
@@ -347,8 +364,7 @@ function CreateKpiModal({ onClose }: { onClose: () => void }) {
       description: description || undefined,
       unit: unit || undefined,
       formulaType,
-      predefinedType: formulaType === 'PREDEFINED' && predefinedType ? predefinedType : undefined,
-      baseConfig: {},
+      baseConfig: formulaType === 'SQL' ? { sql: sqlQuery } : {},
       ...(formulaType === 'FORMULA_AST' && formulaAst ? { formulaAst: formulaAst as unknown as Record<string, unknown> } : {}),
       targetProfileIds: targetProfileIds.size > 0 ? [...targetProfileIds] : undefined,
       defaultThresholdRedMin: toNum(thresholds.redMin),
@@ -419,35 +435,39 @@ function CreateKpiModal({ onClose }: { onClose: () => void }) {
                 <input type="text" value={unit} onChange={(e) => setUnit(e.target.value)}
                   placeholder="%, h, pts…" style={modalInputStyle} />
               </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 4 }}>Type de formule *</label>
-                <select value={formulaType} onChange={(e) => setFormulaType(e.target.value as typeof formulaType)}
-                  style={modalInputStyle}>
-                  <option value="FORMULA_AST">Formule guidee</option>
-                  <option value="PREDEFINED">Predefinie (code)</option>
-                  <option value="JQL">JQL</option>
-                  <option value="SQL">SQL</option>
-                </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 4 }}>Type de formule</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => handleFormulaTypeChange('FORMULA_AST')}
+                  style={{
+                    flex: 1, padding: '8px 12px', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                    border: isAst ? '2px solid #4f46e5' : '1px solid #d1d5db',
+                    background: isAst ? '#eef2ff' : 'white',
+                    color: isAst ? '#4f46e5' : '#6b7280',
+                  }}>
+                  Formule guidee
+                </button>
+                <button onClick={() => handleFormulaTypeChange('SQL')}
+                  style={{
+                    flex: 1, padding: '8px 12px', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                    border: isSql ? '2px solid #4f46e5' : '1px solid #d1d5db',
+                    background: isSql ? '#eef2ff' : 'white',
+                    color: isSql ? '#4f46e5' : '#6b7280',
+                  }}>
+                  SQL brut
+                </button>
               </div>
             </div>
-            {formulaType === 'PREDEFINED' && (
-              <div>
-                <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 4 }}>Type predefini</label>
-                <input type="text" value={predefinedType} onChange={(e) => setPredefinedType(e.target.value.toUpperCase())}
-                  placeholder="Ex. : RATIO_RETOURS" style={{ ...modalInputStyle, fontFamily: 'monospace' }} />
-              </div>
-            )}
           </div>
         )}
 
         {modalTab === 'expression' && isAst && (
           <FormulaEditor value={formulaAst} onChange={setFormulaAst} section="expression" />
         )}
-        {modalTab === 'perimetre' && isAst && (
-          <FormulaEditor value={formulaAst} onChange={setFormulaAst} section="perimetre" />
-        )}
-        {modalTab === 'filtres' && isAst && (
-          <FormulaEditor value={formulaAst} onChange={setFormulaAst} section="filtres" />
+
+        {modalTab === 'sql' && isSql && (
+          <SqlHighlightEditor value={sqlQuery} onChange={setSqlQuery} label="Requete SQL" />
         )}
 
         {modalTab === 'profils' && (
@@ -611,7 +631,6 @@ export default function KpiConfigPage() {
                     <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
                       {def.formulaType}
                       {def.unit && ` · unite : ${def.unit}`}
-                      {def.predefinedType && ` · type : ${def.predefinedType}`}
                     </div>
                     {/* Profils cibles */}
                     {targetProfiles.length === 0 ? (

@@ -243,8 +243,8 @@ if (kpiClientConfig.formulaOverride) {
 }
 
 switch (kpiDefinition.formulaType) {
-  case 'PREDEFINED':
-    return registry.get(kpiDefinition.predefinedType).calculate(issues, finalConfig, context);
+  case 'FORMULA_AST':
+    return formulaAstCalculator.calculate(kpiDefinition.formulaAst, context);
   case 'JQL':
     return jqlCalculator.calculate(kpiDefinition.baseConfig.jql, finalConfig, context);
   case 'SQL':
@@ -256,8 +256,7 @@ switch (kpiDefinition.formulaType) {
 
 | Besoin | Où intervenir | Impact |
 |--------|--------------|--------|
-| Corriger la formule "Respect des charges" | `RatioEstimeConsomme.ts` | Aucun autre fichier touché |
-| Adapter la formule pour un seul client | Champ `formula_override` en base (SQL) | Zéro code |
+| Corriger une formule | Éditer l'AST directement dans l'UI | Aucun code |
 | Ajouter un nouveau type de formule prédéfinie | Nouveau fichier dans `predefined/` + entrée dans `registry.ts` | 2 fichiers |
 | Modifier un paramètre de calcul pour un client | Champ `config_override` en base (JSON) | Zéro code |
 | Corriger le moteur JQL → SQL | `JqlCalculator.ts` | Aucun calculator prédéfini touché |

@@ -1,8 +1,7 @@
 import { prisma } from '@/db/prisma';
-import { CalculationContext, KpiCalculationResult } from '@/types/domain';
+import { CalculationContext, KpiCalculationResult, EMPTY_RESULT } from '@/types/domain';
 import { getMetric, MetricDefinition } from './metricsCatalog';
 import type { FormulaAst, FormulaNode, FormulaFilters, FormulaEvalResult, CustomFieldFilter, ScopeRule } from './types';
-import { EMPTY_RESULT } from '../calculators/KpiCalculator';
 import { logger } from '@/utils/logger';
 import type { QueryCollector } from '../queryCapture';
 
@@ -21,7 +20,7 @@ export class FormulaAstCalculator {
     // Pré-charger le cache parentJiraIds si le scope le nécessite,
     // pour que la trace _scope_parent_ids apparaisse AVANT les métriques
     const scopeType = ast.filters.scopeRule?.type;
-    if (scopeType === 'worklogs_in_period_with_children') {
+    if (scopeType === 'worklogs_in_period') {
       await this.getParentJiraIdsWithChildWorklogs(context);
     }
 
@@ -481,9 +480,6 @@ export class FormulaAstCalculator {
     if (filters.excludeJiraKeys && filters.excludeJiraKeys.length > 0) {
       where.jiraKey = { notIn: filters.excludeJiraKeys };
     }
-    if (filters.includeSubtasks === false) {
-      where.issueType = { ...(where.issueType as object ?? {}), not: 'Sub-task' };
-    }
 
     // Filtre collaborateur
     if (context.jiraAccountIds) {
@@ -582,25 +578,14 @@ export class FormulaAstCalculator {
         break;
 
       case 'worklogs_in_period':
-        // Issues ayant au moins 1 worklog dans la période
-        where.worklogs = {
-          some: {
-            startedAt: { gte: context.periodStart, lte: context.periodEnd },
-          },
-        };
-        break;
-
-      case 'worklogs_in_period_with_children':
         // Issues ayant un worklog dans la période,
         // OU dont une sous-tâche (via parentJiraId) a un worklog dans la période
         where.OR = [
-          // L'issue elle-même a un worklog
           {
             worklogs: {
               some: { startedAt: { gte: context.periodStart, lte: context.periodEnd } },
             },
           },
-          // Une sous-tâche de cette issue a un worklog (parentJiraId pointe vers jiraId de cette issue)
           {
             jiraId: {
               in: await this.getParentJiraIdsWithChildWorklogs(context),

@@ -3,6 +3,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { clientsApi, jiraConnectionsApi, kpiApi, issuesApi } from '@/api/endpoints';
 import type { FormulaNode, FormulaFilters, FormulaAst, FormulaFunction, MetricInfo, CustomFieldFilter, JiraCustomFieldInfo, ScopeRule } from '@/types';
 import { ScopeRuleEditor } from './ScopeRuleEditor';
+import { astToSql } from '@/utils/astToSql';
 
 const FUNCTIONS: { id: FormulaFunction; label: string; arity: number; description: string }[] = [
   { id: 'sum', label: 'Somme', arity: 1, description: 'Somme d\'une métrique' },
@@ -20,15 +21,14 @@ interface FormulaEditorProps {
   onChange: (ast: FormulaAst) => void;
   clientId?: number;
   period?: string;
-  /** Si true, affiche uniquement la section demandée sans onglets */
-  section?: 'expression' | 'perimetre' | 'filtres';
+  /** Si true, affiche uniquement l'expression sans onglets */
+  section?: 'expression';
 }
 
 const DEFAULT_FILTERS: FormulaFilters = {
   scopeRule: { type: 'resolved_in_period' },
   issueTypes: [],
   statuses: [],
-  includeSubtasks: false,
 };
 
 const DEFAULT_NODE: FormulaNode = { type: 'metric', id: 'consomme' };
@@ -80,7 +80,8 @@ export function FormulaEditor({ value, onChange, clientId, period, section }: Fo
     onChange({ version: 1, expression, filters });
   }, [expression, filters]);
 
-  const [activeTab, setActiveTab] = useState<'formule' | 'perimetre' | 'filtres'>('formule');
+  const [activeTab, setActiveTab] = useState<'formule'>('formule');
+  const [showSqlPreview, setShowSqlPreview] = useState(false);
 
   const globalJiraContext = !clientId
     ? {
@@ -94,95 +95,25 @@ export function FormulaEditor({ value, onChange, clientId, period, section }: Fo
   if (section) {
     return (
       <div>
-        {section === 'expression' && (
-          <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
-            <NodeEditor node={expression} onChange={setExpression} metrics={metrics ?? []} depth={0} clientId={clientId} globalJiraContext={globalJiraContext} />
-          </div>
-        )}
-        {section === 'perimetre' && (
-          <div>
-            <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
-              <ScopeRuleEditor
-                clientId={clientId}
-                globalJiraContext={globalJiraContext}
-                value={filters.scopeRule}
-                onChange={(rule) => setFilters({ ...filters, scopeRule: rule })}
-              />
-            </div>
-            <div style={{ marginTop: 12 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-                <input type="checkbox" checked={filters.includeSubtasks ?? false}
-                  onChange={(e) => setFilters({ ...filters, includeSubtasks: e.target.checked })} />
-                Inclure sous-taches
-              </label>
-            </div>
-          </div>
-        )}
-        {section === 'filtres' && (
-          <FilterCheckboxes
-            filters={filters}
-            onChange={setFilters}
-            clientId={clientId}
-            globalJiraContext={globalJiraContext}
-          />
-        )}
+        <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
+          <NodeEditor node={expression} onChange={setExpression} metrics={metrics ?? []} depth={0} clientId={clientId} globalJiraContext={globalJiraContext} />
+        </div>
+        <div style={{ marginTop: 8 }}>
+          <button onClick={() => setShowSqlPreview(!showSqlPreview)} style={btnSqlPreview}>
+            {showSqlPreview ? '▲ Masquer le SQL' : '🔍 Voir le SQL généré'}
+          </button>
+        </div>
+        {showSqlPreview && <SqlPreviewPanel ast={{ version: 1, expression, filters }} />}
       </div>
     );
   }
 
-  // Mode standalone avec onglets internes (pour le modal de personnalisation client)
+  // Mode standalone (pour le modal de personnalisation client)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-      <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #e5e7eb', marginBottom: 12 }}>
-        {[
-          { id: 'formule' as const, label: 'Formule' },
-          { id: 'perimetre' as const, label: 'Perimetre' },
-          { id: 'filtres' as const, label: 'Filtres' },
-        ].map((tab) => (
-          <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-            style={{
-              padding: '8px 20px', fontSize: 13, fontWeight: 600, border: 'none',
-              borderBottom: activeTab === tab.id ? '2px solid #4f46e5' : '2px solid transparent',
-              marginBottom: -2, background: 'transparent',
-              color: activeTab === tab.id ? '#4f46e5' : '#6b7280', cursor: 'pointer',
-            }}>
-            {tab.label}
-          </button>
-        ))}
+      <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, maxHeight: '60vh', overflowY: 'auto' }}>
+        <NodeEditor node={expression} onChange={setExpression} metrics={metrics ?? []} depth={0} clientId={clientId} globalJiraContext={globalJiraContext} />
       </div>
-
-      {activeTab === 'formule' && (
-        <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, maxHeight: '60vh', overflowY: 'auto' }}>
-          <NodeEditor node={expression} onChange={setExpression} metrics={metrics ?? []} depth={0} clientId={clientId} globalJiraContext={globalJiraContext} />
-        </div>
-      )}
-      {activeTab === 'perimetre' && (
-        <div>
-          <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
-            <ScopeRuleEditor
-              clientId={clientId}
-              globalJiraContext={globalJiraContext}
-              value={filters.scopeRule}
-              onChange={(rule) => setFilters({ ...filters, scopeRule: rule })}
-            />
-          </div>
-          <div style={{ marginTop: 12 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-              <input type="checkbox" checked={filters.includeSubtasks ?? false}
-                onChange={(e) => setFilters({ ...filters, includeSubtasks: e.target.checked })} />
-              Inclure sous-taches
-            </label>
-          </div>
-        </div>
-      )}
-      {activeTab === 'filtres' && (
-        <FilterCheckboxes
-          filters={filters}
-          onChange={setFilters}
-          clientId={clientId}
-          globalJiraContext={globalJiraContext}
-        />
-      )}
 
       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
         <button onClick={() => validateMutation.mutate()} style={btnSecondary}>
@@ -193,7 +124,12 @@ export function FormulaEditor({ value, onChange, clientId, period, section }: Fo
             {testMutation.isPending ? 'Calcul...' : 'Tester sur les donnees'}
           </button>
         )}
+        <button onClick={() => setShowSqlPreview(!showSqlPreview)} style={btnSqlPreview}>
+          {showSqlPreview ? '▲ Masquer le SQL' : '🔍 Voir le SQL généré'}
+        </button>
       </div>
+
+      {showSqlPreview && <SqlPreviewPanel ast={{ version: 1, expression, filters }} />}
 
       {/* Résultat validation */}
       {validateMutation.data && (
@@ -244,6 +180,7 @@ function FilterCheckboxes({
   onChange,
   clientId,
   globalJiraContext,
+  hidePerimetre,
 }: {
   filters: FormulaFilters;
   onChange: (f: FormulaFilters) => void;
@@ -253,6 +190,7 @@ function FilterCheckboxes({
     selectedConnectionId?: number;
     onConnectionChange: (jiraConnectionId: number | undefined) => void;
   };
+  hidePerimetre?: boolean;
 }) {
   const jiraConnections = globalJiraContext?.jiraConnections ?? [];
   const selectedConnectionId = globalJiraContext?.selectedConnectionId;
@@ -291,6 +229,19 @@ function FilterCheckboxes({
 
   return (
     <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {/* Périmètre (scope rule) — masqué si hidePerimetre */}
+      {!hidePerimetre && (
+        <div>
+          <label style={miniLabel}>Perimetre (regle de selection des issues)</label>
+          <ScopeRuleEditor
+            clientId={clientId}
+            globalJiraContext={globalJiraContext}
+            value={filters.scopeRule}
+            onChange={(rule) => onChange({ ...filters, scopeRule: rule })}
+          />
+        </div>
+      )}
+
       {/* Sélecteur instance JIRA (mode global) */}
       {!clientId && jiraConnections && jiraConnections.length > 0 && (
         <div style={{ padding: '8px 10px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6 }}>
@@ -669,7 +620,7 @@ function NodeEditor({
     onConnectionChange: (jiraConnectionId: number | undefined) => void;
   };
 }) {
-  const [showLocalFilters, setShowLocalFilters] = useState(!!node.filters);
+  const [openPanel, setOpenPanel] = useState<'perimetre' | 'filtres' | null>(null);
   const bgColors = ['#ffffff', '#f8fafc', '#f1f5f9', '#e2e8f0'];
   const bg = bgColors[Math.min(depth, bgColors.length - 1)];
 
@@ -688,8 +639,7 @@ function NodeEditor({
     (node.filters.labels?.length ?? 0) > 0 ? 1 : 0,
     (node.filters.components?.length ?? 0) > 0 ? 1 : 0,
     (node.filters.customFieldFilters?.length ?? 0) > 0 ? 1 : 0,
-    node.filters.scopeRule ? 1 : 0,
-    node.filters.includeSubtasks ? 1 : 0,
+    (node.filters.excludeJiraKeys?.length ?? 0) > 0 ? 1 : 0,
   ].reduce((a, b) => a + b, 0);
 
   return (
@@ -727,29 +677,36 @@ function NodeEditor({
               ))}
             </select>
 
-            {/* Bouton filtres locaux */}
+            {/* Bouton Périmètre */}
             <button
-              onClick={() => {
-                if (showLocalFilters) {
-                  // Fermer et supprimer les filtres locaux
-                  const { filters: _removed, ...rest } = node;
-                  onChange(rest as FormulaNode);
-                  setShowLocalFilters(false);
-                } else {
-                  setShowLocalFilters(true);
-                }
-              }}
-              title={showLocalFilters ? 'Supprimer les filtres locaux (heriter du global)' : 'Ajouter des filtres specifiques a cette branche'}
+              onClick={() => setOpenPanel(openPanel === 'perimetre' ? null : 'perimetre')}
+              title="Perimetre : regle de selection des issues"
               style={{
                 padding: '1px 7px', fontSize: 11, borderRadius: 4, cursor: 'pointer',
-                border: hasLocalFilters ? '1px solid #8b5cf6' : '1px solid #d1d5db',
-                background: hasLocalFilters ? '#ede9fe' : showLocalFilters ? '#f5f3ff' : 'white',
+                border: openPanel === 'perimetre' || node.filters?.scopeRule ? '1px solid #8b5cf6' : '1px solid #d1d5db',
+                background: openPanel === 'perimetre' ? '#f5f3ff' : node.filters?.scopeRule ? '#ede9fe' : 'white',
+                color: node.filters?.scopeRule ? '#6d28d9' : '#6b7280',
+                fontWeight: node.filters?.scopeRule ? 700 : 400,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              🎯 Perimetre
+            </button>
+
+            {/* Bouton Filtres */}
+            <button
+              onClick={() => setOpenPanel(openPanel === 'filtres' ? null : 'filtres')}
+              title="Filtres : types, statuts, labels, champs custom..."
+              style={{
+                padding: '1px 7px', fontSize: 11, borderRadius: 4, cursor: 'pointer',
+                border: openPanel === 'filtres' ? '1px solid #8b5cf6' : hasLocalFilters ? '1px solid #8b5cf6' : '1px solid #d1d5db',
+                background: openPanel === 'filtres' ? '#f5f3ff' : hasLocalFilters ? '#ede9fe' : 'white',
                 color: hasLocalFilters ? '#6d28d9' : '#6b7280',
                 fontWeight: hasLocalFilters ? 700 : 400,
                 whiteSpace: 'nowrap',
               }}
             >
-              {hasLocalFilters ? `⚙ Filtres (${localFilterCount})` : '⚙ Filtres'}
+              🔍 Filtres{localFilterCount > 0 ? ` (${localFilterCount})` : ''}
             </button>
           </>
         )}
@@ -776,25 +733,84 @@ function NodeEditor({
         )}
       </div>
 
-      {/* Filtres locaux de cette branche */}
-      {node.type === 'function' && showLocalFilters && (
+      {/* Panneau Périmètre */}
+      {node.type === 'function' && openPanel === 'perimetre' && (
         <div style={{
           margin: '4px 0 4px 12px', padding: 8, borderRadius: 6,
           border: '1px dashed #8b5cf6', background: '#faf5ff',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
             <span style={{ fontSize: 11, fontWeight: 700, color: '#6d28d9' }}>
-              Filtres locaux — {node.name}
+              🎯 Perimetre — {node.name}
             </span>
-            <span style={{ fontSize: 10, color: '#9ca3af' }}>
+            <span style={{ fontSize: 10, color: '#9ca3af', flex: 1 }}>
+              (surcharge le perimetre global pour cette branche)
+            </span>
+            {(node.filters ?? {}).scopeRule && (
+              <button
+                onClick={() => {
+                  const { scopeRule: _, ...rest } = node.filters ?? {};
+                  onChange({ ...node, filters: Object.keys(rest).length > 0 ? rest : undefined });
+                }}
+                title="Reinitialiser le perimetre (heriter du parent)"
+                style={{
+                  padding: '1px 8px', fontSize: 10, borderRadius: 4, cursor: 'pointer',
+                  border: '1px solid #fca5a5', background: '#fef2f2', color: '#dc2626', fontWeight: 600,
+                }}
+              >
+                Reinitialiser
+              </button>
+            )}
+          </div>
+          <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div>
+              <label style={miniLabel}>Perimetre (regle de selection des issues)</label>
+              <ScopeRuleEditor
+                clientId={clientId}
+                globalJiraContext={globalJiraContext}
+                value={(node.filters ?? {}).scopeRule}
+                onChange={(rule) => onChange({ ...node, filters: { ...(node.filters ?? {}), scopeRule: rule } })}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Panneau Filtres */}
+      {node.type === 'function' && openPanel === 'filtres' && (
+        <div style={{
+          margin: '4px 0 4px 12px', padding: 8, borderRadius: 6,
+          border: '1px dashed #8b5cf6', background: '#faf5ff',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#6d28d9' }}>
+              🔍 Filtres — {node.name}
+            </span>
+            <span style={{ fontSize: 10, color: '#9ca3af', flex: 1 }}>
               (surcharge les filtres globaux pour cette branche)
             </span>
+            {localFilterCount > 0 && (
+              <button
+                onClick={() => {
+                  const scopeRule = (node.filters ?? {}).scopeRule;
+                  onChange({ ...node, filters: scopeRule ? { scopeRule } : undefined });
+                }}
+                title="Reinitialiser les filtres (heriter du parent)"
+                style={{
+                  padding: '1px 8px', fontSize: 10, borderRadius: 4, cursor: 'pointer',
+                  border: '1px solid #fca5a5', background: '#fef2f2', color: '#dc2626', fontWeight: 600,
+                }}
+              >
+                Reinitialiser
+              </button>
+            )}
           </div>
           <FilterCheckboxes
             filters={node.filters ?? {}}
             onChange={(localFilters) => onChange({ ...node, filters: localFilters })}
             clientId={clientId}
             globalJiraContext={globalJiraContext}
+            hidePerimetre
           />
         </div>
       )}
@@ -838,3 +854,32 @@ const inputStyle: React.CSSProperties = { width: '100%', padding: '3px 6px', bor
 const selectStyle: React.CSSProperties = { padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 11, background: 'white' };
 const btnPrimary: React.CSSProperties = { padding: '6px 16px', background: '#4f46e5', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600 };
 const btnSecondary: React.CSSProperties = { padding: '6px 16px', background: 'white', color: '#374151', border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600 };
+const btnSqlPreview: React.CSSProperties = { padding: '6px 16px', background: '#faf5ff', color: '#7c3aed', border: '1px solid #c4b5fd', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600 };
+
+// ── SQL Preview Panel (lecture seule) ──
+
+function SqlPreviewPanel({ ast }: { ast: FormulaAst }) {
+  const sql = astToSql(ast);
+  const [copied, setCopied] = useState(false);
+
+  return (
+    <div style={{ marginTop: 8, border: '1px solid #c4b5fd', borderRadius: 8, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', background: '#f5f3ff', borderBottom: '1px solid #c4b5fd' }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#6d28d9' }}>SQL equivalent (lecture seule)</span>
+        <button
+          onClick={() => { navigator.clipboard.writeText(sql); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+          style={{ padding: '2px 10px', fontSize: 11, borderRadius: 4, border: '1px solid #d1d5db', background: copied ? '#d1fae5' : 'white', color: copied ? '#065f46' : '#374151', cursor: 'pointer' }}
+        >
+          {copied ? '✓ Copie' : 'Copier'}
+        </button>
+      </div>
+      <pre style={{
+        margin: 0, padding: 12, fontSize: 12, lineHeight: 1.5, fontFamily: "'Fira Code', 'Cascadia Code', monospace",
+        background: '#1e1e2e', color: '#cdd6f4', overflowX: 'auto', maxHeight: 300,
+        whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+      }}>
+        {sql}
+      </pre>
+    </div>
+  );
+}

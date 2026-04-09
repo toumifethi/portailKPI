@@ -65,7 +65,6 @@ export type ScopeRule =
   | { type: 'resolved_in_period' }
   | { type: 'updated_in_period' }
   | { type: 'worklogs_in_period' }
-  | { type: 'worklogs_in_period_with_children' }
   | { type: 'status_in_period'; statuses: string[]; slidingWindowMonths?: number }
   | { type: 'sprint_in_period' }
   | { type: 'created_in_period' }
@@ -85,8 +84,6 @@ export interface FormulaFilters {
   components?: string[];
   /** Clés JIRA à exclure (ex: ["ISR-1234", "ISR-5678"]) */
   excludeJiraKeys?: string[];
-  /** Inclure les sous-tâches */
-  includeSubtasks?: boolean;
   /** Filtres sur champs custom JIRA */
   customFieldFilters?: CustomFieldFilter[];
   /** Logique entre les filtres custom : AND (tous) ou OR (au moins un) */

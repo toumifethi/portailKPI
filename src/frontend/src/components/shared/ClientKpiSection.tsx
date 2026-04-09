@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { kpiApi, collaboratorsApi } from '@/api/endpoints';
 import { FormulaEditor } from '@/components/shared/FormulaEditor';
+import { SqlHighlightEditor } from '@/components/shared/SqlHighlightEditor';
 import type { KpiClientConfig, KpiDebugTrace, FormulaAst, Collaborator } from '@/types';
 
 // ── Types locaux ─────────────────────────────────────────────────────────────
@@ -213,7 +214,7 @@ export function ClientKpiSection({ clientId }: ClientKpiSectionProps) {
   });
 
   const resetFormulaMutation = useMutation({
-    mutationFn: (configId: number) => kpiApi.updateConfig(configId, { formulaAstOverride: null } as Partial<KpiClientConfig>),
+    mutationFn: (configId: number) => kpiApi.updateConfig(configId, { formulaAstOverride: null, configOverride: {} } as Partial<KpiClientConfig>),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['kpi-configs', clientId] }),
   });
 
@@ -342,11 +343,13 @@ export function ClientKpiSection({ clientId }: ClientKpiSectionProps) {
                     background: '#eff6ff', cursor: 'pointer', fontSize: 12, color: '#1d4ed8', fontWeight: 600,
                   }}
                 >
-                  {(config as unknown as { formulaAstOverride: unknown }).formulaAstOverride
+                  {((config as unknown as { formulaAstOverride: unknown }).formulaAstOverride
+                    || (config.configOverride as Record<string, unknown>)?.sql)
                     ? 'Formule personnalisee'
                     : 'Personnaliser la formule'}
                 </button>
-                {(config as unknown as { formulaAstOverride: unknown }).formulaAstOverride && (
+                {((config as unknown as { formulaAstOverride: unknown }).formulaAstOverride
+                  || (config.configOverride as Record<string, unknown>)?.sql) && (
                   <button
                     onClick={() => {
                       if (confirm('Reinitialiser avec la formule par defaut de la definition ?')) {
@@ -520,24 +523,46 @@ function FormulaOverrideModal({ config, clientId, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
-  // Pre-remplir avec l'override existant, sinon la formule globale de la definition
-  const existingOverride = (config as unknown as { formulaAstOverride: FormulaAst | null }).formulaAstOverride;
-  const globalAst = (config.kpiDefinition as unknown as { formulaAst: FormulaAst | null })?.formulaAst;
-  const initialAst = existingOverride ?? globalAst ?? null;
+  const isSql = config.kpiDefinition?.formulaType === 'SQL';
 
+  // ── AST mode ──
+  const existingAstOverride = (config as unknown as { formulaAstOverride: FormulaAst | null }).formulaAstOverride;
+  const globalAst = (config.kpiDefinition as unknown as { formulaAst: FormulaAst | null })?.formulaAst;
+  const initialAst = existingAstOverride ?? globalAst ?? null;
   const [formulaAst, setFormulaAst] = useState<FormulaAst | null>(initialAst);
 
+  // ── SQL mode ──
+  const globalSql = ((config.kpiDefinition as unknown as { baseConfig: Record<string, unknown> })?.baseConfig?.sql as string) ?? '';
+  const overrideSql = ((config.configOverride as Record<string, unknown>)?.sql as string) ?? '';
+  const [sqlQuery, setSqlQuery] = useState<string>(overrideSql || globalSql);
+
+  const hasOverride = isSql ? !!overrideSql : !!existingAstOverride;
+
   const saveMutation = useMutation({
-    mutationFn: () => kpiApi.updateConfig(config.id, {
-      formulaAstOverride: formulaAst,
-    } as Partial<KpiClientConfig>),
+    mutationFn: () => {
+      if (isSql) {
+        return kpiApi.updateConfig(config.id, {
+          configOverride: { sql: sqlQuery },
+        } as Partial<KpiClientConfig>);
+      }
+      return kpiApi.updateConfig(config.id, {
+        formulaAstOverride: formulaAst,
+      } as Partial<KpiClientConfig>);
+    },
     onSuccess: onSaved,
   });
 
   const resetMutation = useMutation({
-    mutationFn: () => kpiApi.updateConfig(config.id, {
-      formulaAstOverride: null,
-    } as Partial<KpiClientConfig>),
+    mutationFn: () => {
+      if (isSql) {
+        return kpiApi.updateConfig(config.id, {
+          configOverride: {},
+        } as Partial<KpiClientConfig>);
+      }
+      return kpiApi.updateConfig(config.id, {
+        formulaAstOverride: null,
+      } as Partial<KpiClientConfig>);
+    },
     onSuccess: onSaved,
   });
 
@@ -550,7 +575,7 @@ function FormulaOverrideModal({ config, clientId, onClose, onSaved }: {
               Formule personnalisee — {config.kpiDefinition?.name}
             </h2>
             <p style={{ margin: '4px 0 0', fontSize: 12, color: '#6b7280' }}>
-              {existingOverride
+              {hasOverride
                 ? 'Ce client utilise une formule personnalisee. Vous pouvez la modifier ou revenir a la formule par defaut.'
                 : 'La formule par defaut de la definition est utilisee. Personnalisez-la pour ce client.'}
             </p>
@@ -558,11 +583,11 @@ function FormulaOverrideModal({ config, clientId, onClose, onSaved }: {
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#6b7280' }}>{'×'}</button>
         </div>
 
-        {existingOverride && (
+        {hasOverride && (
           <div style={{ marginBottom: 12, padding: 8, background: '#fef3c7', borderRadius: 6, fontSize: 12, color: '#92400e', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>Ce client a une formule personnalisee.</span>
             <button
-              onClick={() => { if (confirm('Revenir a la formule par defaut ?')) resetMutation.mutate(); }}
+              onClick={() => { if (confirm('Revenir a la formule par defaut ?')) { resetMutation.mutate(); if (isSql) setSqlQuery(globalSql); } }}
               disabled={resetMutation.isPending}
               style={{ padding: '3px 10px', background: 'white', border: '1px solid #d97706', borderRadius: 4, cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#92400e' }}
             >
@@ -571,7 +596,11 @@ function FormulaOverrideModal({ config, clientId, onClose, onSaved }: {
           </div>
         )}
 
-        <FormulaEditor value={formulaAst} onChange={setFormulaAst} clientId={clientId} />
+        {isSql ? (
+          <SqlHighlightEditor value={sqlQuery} onChange={setSqlQuery} label="Requete SQL (override client)" />
+        ) : (
+          <FormulaEditor value={formulaAst} onChange={setFormulaAst} clientId={clientId} />
+        )}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
           <button onClick={onClose}
@@ -588,6 +617,8 @@ function FormulaOverrideModal({ config, clientId, onClose, onSaved }: {
     </div>
   );
 }
+
+// ── Editeur SQL inline pour override client ──
 
 // ── Modal traces debug ──────────────────────────────────────────────────────
 

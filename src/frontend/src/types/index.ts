@@ -128,7 +128,6 @@ export interface KpiDefinition {
   description: string | null;
   unit: string | null;
   formulaType: string;
-  predefinedType: string | null;
   isSystem: boolean;
 }
 
@@ -461,7 +460,6 @@ export type ScopeRule =
   | { type: 'resolved_in_period' }
   | { type: 'updated_in_period' }
   | { type: 'worklogs_in_period' }
-  | { type: 'worklogs_in_period_with_children' }
   | { type: 'status_in_period'; statuses: string[]; slidingWindowMonths?: number }
   | { type: 'sprint_in_period' }
   | { type: 'created_in_period' }
@@ -475,7 +473,6 @@ export interface FormulaFilters {
   labels?: string[];
   components?: string[];
   excludeJiraKeys?: string[];
-  includeSubtasks?: boolean;
   customFieldFilters?: CustomFieldFilter[];
   customFieldLogic?: 'AND' | 'OR';
 }
