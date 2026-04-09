@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { clientsApi, jiraConnectionsApi, kpiApi, issuesApi } from '@/api/endpoints';
-import type { FormulaNode, FormulaFilters, FormulaAst, FormulaFunction, MetricInfo, CustomFieldFilter, JiraCustomFieldInfo, ScopeRule } from '@/types';
+import type { FormulaNode, FormulaFilters, FormulaAst, FormulaFunction, MetricInfo, CustomFieldFilter, JiraCustomFieldInfo, ScopeRule, IssueFieldFilter } from '@/types';
 import { ScopeRuleEditor } from './ScopeRuleEditor';
 import { astToSql } from '@/utils/astToSql';
+import { highlightSql } from './SqlHighlightEditor';
 
 const FUNCTIONS: { id: FormulaFunction; label: string; arity: number; description: string }[] = [
   { id: 'sum', label: 'Somme', arity: 1, description: 'Somme d\'une métrique' },
@@ -337,6 +338,17 @@ function FilterCheckboxes({
         />
       </div>
 
+      {/* Worklogs par collaborateur évalué */}
+      <div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+          <input type="checkbox" checked={filters.filterWorklogsByAuthor ?? false}
+            onChange={(e) => onChange({ ...filters, filterWorklogsByAuthor: e.target.checked || undefined })}
+            style={{ accentColor: '#4f46e5', width: 12, height: 12 }} />
+          Worklogs du collaborateur evalue uniquement
+          <span style={{ fontSize: 10, color: '#9ca3af' }}>(filtre par auteur du worklog)</span>
+        </label>
+      </div>
+
       {/* Filtres champs custom */}
       <CustomFieldFiltersUI
         filters={filters.customFieldFilters ?? []}
@@ -344,6 +356,113 @@ function FilterCheckboxes({
         onChange={(cfFilters, logic) => onChange({ ...filters, customFieldFilters: cfFilters, customFieldLogic: logic })}
         clientId={effectiveClientId}
       />
+
+      {/* Filtres champs natifs issue */}
+      <IssueFieldFiltersUI
+        filters={filters.issueFieldFilters ?? []}
+        onChange={(issueFieldFilters) => onChange({ ...filters, issueFieldFilters })}
+      />
+    </div>
+  );
+}
+
+// ── Filtres champs natifs issue ──
+
+const ISSUE_FIELDS: { id: IssueFieldFilter['field']; label: string }[] = [
+  { id: 'originalEstimateHours', label: 'Estimation initiale (h)' },
+  { id: 'storyPoints', label: 'Story points' },
+  { id: 'timeSpentSeconds', label: 'Temps consomme (s)' },
+  { id: 'remainingEstimateSeconds', label: 'Restant (s)' },
+  { id: 'rollupTimeSpentHours', label: 'Consomme rollup (h)' },
+  { id: 'rollupEstimateHours', label: 'Estime rollup (h)' },
+  { id: 'rollupRemainingHours', label: 'Restant rollup (h)' },
+];
+
+const ISSUE_FIELD_OPERATORS: { id: IssueFieldFilter['operator']; label: string; needsValue: boolean }[] = [
+  { id: 'is_null', label: 'est vide (null)', needsValue: false },
+  { id: 'is_not_null', label: "n'est pas vide", needsValue: false },
+  { id: 'is_zero', label: '= 0', needsValue: false },
+  { id: 'is_null_or_zero', label: 'est vide ou 0', needsValue: false },
+  { id: 'gt_zero', label: '> 0', needsValue: false },
+  { id: 'equals', label: '=', needsValue: true },
+  { id: 'gte', label: '>=', needsValue: true },
+  { id: 'lte', label: '<=', needsValue: true },
+];
+
+function IssueFieldFiltersUI({
+  filters,
+  onChange,
+}: {
+  filters: IssueFieldFilter[];
+  onChange: (filters: IssueFieldFilter[]) => void;
+}) {
+  function addFilter() {
+    onChange([...filters, { field: 'originalEstimateHours', operator: 'is_null_or_zero' }]);
+  }
+
+  function updateFilter(index: number, patch: Partial<IssueFieldFilter>) {
+    const updated = filters.map((f, i) => i === index ? { ...f, ...patch } : f);
+    onChange(updated);
+  }
+
+  function removeFilter(index: number) {
+    onChange(filters.filter((_, i) => i !== index));
+  }
+
+  return (
+    <div>
+      <label style={miniLabel}>Conditions sur champs issue</label>
+
+      {filters.map((filter, i) => {
+        const opDef = ISSUE_FIELD_OPERATORS.find((o) => o.id === filter.operator);
+        return (
+          <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+            <select
+              value={filter.field}
+              onChange={(e) => updateFilter(i, { field: e.target.value as IssueFieldFilter['field'] })}
+              style={{ ...selectStyle, maxWidth: 200 }}
+            >
+              {ISSUE_FIELDS.map((f) => (
+                <option key={f.id} value={f.id}>{f.label}</option>
+              ))}
+            </select>
+
+            <select
+              value={filter.operator}
+              onChange={(e) => updateFilter(i, { operator: e.target.value as IssueFieldFilter['operator'], value: undefined })}
+              style={selectStyle}
+            >
+              {ISSUE_FIELD_OPERATORS.map((op) => (
+                <option key={op.id} value={op.id}>{op.label}</option>
+              ))}
+            </select>
+
+            {opDef?.needsValue && (
+              <input
+                type="number"
+                value={filter.value ?? ''}
+                onChange={(e) => updateFilter(i, { value: e.target.value ? Number(e.target.value) : undefined })}
+                placeholder="valeur"
+                style={{ ...inputStyle, width: 80, minWidth: 60 }}
+              />
+            )}
+
+            <button
+              onClick={() => removeFilter(i)}
+              style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 16, padding: '2px 4px' }}
+            >
+              ×
+            </button>
+          </div>
+        );
+      })}
+
+      <button onClick={addFilter} style={{
+        padding: '3px 10px', fontSize: 12, color: '#4f46e5', background: '#eef2ff',
+        border: '1px solid #c7d2fe', borderRadius: 5, cursor: 'pointer', fontWeight: 600,
+      }}>
+        + Condition sur champ
+      </button>
     </div>
   );
 }
@@ -640,6 +759,7 @@ function NodeEditor({
     (node.filters.components?.length ?? 0) > 0 ? 1 : 0,
     (node.filters.customFieldFilters?.length ?? 0) > 0 ? 1 : 0,
     (node.filters.excludeJiraKeys?.length ?? 0) > 0 ? 1 : 0,
+    (node.filters.issueFieldFilters?.length ?? 0) > 0 ? 1 : 0,
   ].reduce((a, b) => a + b, 0);
 
   return (
@@ -873,13 +993,15 @@ function SqlPreviewPanel({ ast }: { ast: FormulaAst }) {
           {copied ? '✓ Copie' : 'Copier'}
         </button>
       </div>
-      <pre style={{
-        margin: 0, padding: 12, fontSize: 12, lineHeight: 1.5, fontFamily: "'Fira Code', 'Cascadia Code', monospace",
-        background: '#1e1e2e', color: '#cdd6f4', overflowX: 'auto', maxHeight: 300,
-        whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-      }}>
-        {sql}
-      </pre>
+      <div
+        dangerouslySetInnerHTML={{ __html: highlightSql(sql) }}
+        style={{
+          margin: 0, padding: 12, fontSize: 13, lineHeight: 1.7,
+          fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace",
+          background: '#1e1e2e', color: '#cdd6f4', overflowX: 'auto', maxHeight: 300,
+          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+        }}
+      />
     </div>
   );
 }

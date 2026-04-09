@@ -322,6 +322,8 @@ export const issuesApi = {
     apiClient.get<string[]>('/issues/types').then((r) => r.data),
   listStatuses: () =>
     apiClient.get<string[]>('/issues/statuses').then((r) => r.data),
+  listLinkTypes: (clientId?: number) =>
+    apiClient.get<string[]>('/issues/link-types', { params: clientId ? { clientId } : {} }).then((r) => r.data),
 };
 
 // --- Worklogs ---

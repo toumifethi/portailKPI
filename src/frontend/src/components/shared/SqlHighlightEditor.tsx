@@ -24,7 +24,7 @@ const PLACEHOLDER_SET = new Set([
 // Single combined regex for tokenisation — order matters (first match wins)
 const TOKEN_RE = /('(?:[^'\\]|\\.)*')|(--[^\n]*)|(:\w+)|(\b\d+(?:\.\d+)?\b)|(\b[A-Za-z_]\w*\b)/g;
 
-function highlightSql(sql: string): string {
+export function highlightSql(sql: string): string {
   let result = '';
   let lastIdx = 0;
 

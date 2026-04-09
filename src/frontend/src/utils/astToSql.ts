@@ -17,17 +17,9 @@ const METRIC_MAP: Record<string, { table: 'issues' | 'worklogs'; field: string |
   temps_restant:         { table: 'issues', field: 'i.remainingEstimateSeconds', transform: 'secondsToHours' },
   rollup_restant:        { table: 'issues', field: 'i.rollupRemainingHours' },
   nb_issues:             { table: 'issues', field: null },
-  nb_bugs:               { table: 'issues', field: null, implicitWhere: "i.issueType = 'Bug'" },
-  nb_stories:            { table: 'issues', field: null, implicitWhere: "i.issueType = 'Story'" },
-  nb_sans_estimation:    { table: 'issues', field: null, implicitWhere: '(i.originalEstimateHours IS NULL OR i.originalEstimateHours = 0)' },
   story_points:          { table: 'issues', field: 'i.storyPoints' },
   temps_logue:           { table: 'worklogs', field: 'w.timeSpentSeconds', transform: 'secondsToHours' },
-  temps_logue_auteur:    { table: 'worklogs', field: 'w.timeSpentSeconds', transform: 'secondsToHours', implicitWhere: 'w.authorJiraAccountId IN (:jira_account_ids)' },
   nb_worklogs:           { table: 'worklogs', field: null },
-  nb_retours:            { table: 'issues', field: null, implicitWhere: "EXISTS (SELECT 1 FROM issue_links il WHERE il.sourceIssueId = i.id AND il.linkType LIKE '%retour%')" },
-  nb_tickets_dev:        { table: 'issues', field: null, implicitWhere: "NOT EXISTS (SELECT 1 FROM issue_links il WHERE il.sourceIssueId = i.id AND il.linkType LIKE '%retour%')" },
-  nb_tickets_sans_retour:{ table: 'issues', field: null, implicitWhere: "NOT EXISTS (SELECT 1 FROM issue_links il WHERE il.targetIssueId = i.id AND il.linkType LIKE '%retour%')" },
-  consomme_retours:      { table: 'issues', field: 'i.rollupTimeSpentHours', implicitWhere: "EXISTS (SELECT 1 FROM issue_links il WHERE il.sourceIssueId = i.id AND il.linkType LIKE '%retour%')" },
 };
 
 function fieldExpr(field: string, transform?: 'secondsToHours'): string {
@@ -65,6 +57,18 @@ function scopeToWhere(rule: ScopeRule): string[] {
         "EXISTS (\n    SELECT 1 FROM issue_sprints isp\n    JOIN grouping_entities ge ON ge.id = isp.groupingEntityId\n    WHERE isp.issueId = i.id AND ge.entityType = 'SPRINT'\n      AND ge.startDate <= :period_end AND ge.endDate >= :period_start\n  )"
       );
       break;
+    case 'linked_to': {
+      const baseScopeSql = scopeToWhere(rule.baseScope).join(' AND ');
+      const baseTypeFilter = rule.baseFilters?.issueTypes?.length
+        ? ` AND base.issueType IN (${rule.baseFilters.issueTypes.map((t) => `'${t}'`).join(', ')})`
+        : '';
+      const linkCol = rule.direction === 'source' ? 'sourceIssueId' : 'targetIssueId';
+      const baseCol = rule.direction === 'source' ? 'targetIssueId' : 'sourceIssueId';
+      clauses.push(
+        `i.id IN (\n    SELECT il.${linkCol} FROM issue_links il\n    JOIN issues base ON base.id = il.${baseCol}\n    WHERE il.linkType LIKE '%${rule.linkTypeContains.replace(/'/g, "''")}%'\n      AND ${baseScopeSql.replace(/\bi\./g, 'base.')}${baseTypeFilter.replace(/\bi\./g, 'base.')}\n  )`,
+      );
+      break;
+    }
     case 'combined': {
       const logic = rule.logic === 'OR' ? ' OR ' : ' AND ';
       const parts = rule.rules.map((r) => {
@@ -133,6 +137,23 @@ function filtersToWhere(filters: FormulaFilters | undefined): string[] {
       }
     });
     clauses.push(`(${cfClauses.join(logic)})`);
+  }
+
+  // Issue field filters
+  if (filters.issueFieldFilters && filters.issueFieldFilters.length > 0) {
+    for (const ff of filters.issueFieldFilters) {
+      const col = `i.${ff.field}`;
+      switch (ff.operator) {
+        case 'is_null': clauses.push(`${col} IS NULL`); break;
+        case 'is_not_null': clauses.push(`${col} IS NOT NULL`); break;
+        case 'is_zero': clauses.push(`${col} = 0`); break;
+        case 'is_null_or_zero': clauses.push(`(${col} IS NULL OR ${col} = 0)`); break;
+        case 'gt_zero': clauses.push(`${col} > 0`); break;
+        case 'equals': clauses.push(`${col} = ${ff.value ?? 0}`); break;
+        case 'gte': clauses.push(`${col} >= ${ff.value ?? 0}`); break;
+        case 'lte': clauses.push(`${col} <= ${ff.value ?? 0}`); break;
+      }
+    }
   }
 
   return clauses;

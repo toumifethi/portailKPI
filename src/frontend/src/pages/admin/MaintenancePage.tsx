@@ -194,9 +194,8 @@ function MetricsVisibilitySection() {
 
   const sourceGroups = [
     { label: 'Temps (issues)', ids: ['consomme', 'estime', 'rollup_consomme', 'rollup_estime', 'temps_restant', 'rollup_restant'] },
-    { label: 'Compteurs (issues)', ids: ['nb_issues', 'nb_bugs', 'nb_stories', 'nb_sans_estimation', 'story_points'] },
-    { label: 'Worklogs', ids: ['temps_logue', 'temps_logue_auteur', 'nb_worklogs'] },
-    { label: 'Qualite', ids: ['nb_retours', 'nb_tickets_dev', 'nb_tickets_sans_retour', 'consomme_retours'] },
+    { label: 'Compteurs (issues)', ids: ['nb_issues', 'story_points'] },
+    { label: 'Worklogs', ids: ['temps_logue', 'nb_worklogs'] },
   ];
 
   return (

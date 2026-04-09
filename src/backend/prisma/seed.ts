@@ -535,6 +535,67 @@ GROUP BY NULL`;
   });
   console.log('  ✓ KPI definition: Taux de retouche SQL');
 
+  // ── KPI Qualité via linked_to (exemple) ──────────────────────────────────
+  let kpiQualiteLinked = await prisma.kpiDefinition.findFirst({ where: { name: 'Taux de retours' } });
+  if (!kpiQualiteLinked) {
+    kpiQualiteLinked = await prisma.kpiDefinition.create({
+      data: {
+        name: 'Taux de retours',
+        description: 'Ratio temps passe sur les retours lies aux tickets livres / estimation des tickets livres. Utilise le scope linked_to.',
+        formulaType: 'FORMULA_AST',
+        baseConfig: {},
+        formulaAst: {
+          version: 1,
+          expression: {
+            type: 'function',
+            name: 'ratio',
+            args: [
+              {
+                type: 'function',
+                name: 'sum',
+                args: [{ type: 'metric', id: 'rollup_consomme' }],
+                filters: {
+                  scopeRule: {
+                    type: 'linked_to',
+                    baseScope: { type: 'status_in_period', statuses: ['LIVRE EN PRODUCTION', 'Done', 'Closed'], slidingWindowMonths: 1 },
+                    baseFilters: { issueTypes: ['Story', 'Task'] },
+                    linkTypeContains: 'est un retour de',
+                    direction: 'source',
+                  },
+                },
+              },
+              {
+                type: 'function',
+                name: 'sum',
+                args: [{ type: 'metric', id: 'rollup_estime' }],
+                filters: {
+                  scopeRule: { type: 'status_in_period', statuses: ['LIVRE EN PRODUCTION', 'Done', 'Closed'], slidingWindowMonths: 1 },
+                  issueTypes: ['Story', 'Task'],
+                },
+              },
+            ],
+          },
+          filters: {
+            scopeRule: { type: 'worklogs_in_period' },
+          },
+        },
+        unit: '%',
+      },
+    });
+  }
+
+  await prisma.kpiClientConfig.upsert({
+    where: { kpiDefinitionId_clientId: { kpiDefinitionId: kpiQualiteLinked.id, clientId: client.id } },
+    create: {
+      kpiDefinitionId: kpiQualiteLinked.id,
+      clientId: client.id,
+      isActive: true,
+      formulaVersion: '1.0',
+    },
+    update: {},
+  });
+  console.log('  ✓ KPI definition: Taux de retours');
+
   // ── Paramètres applicatifs (app_settings) ─────────────────────────────────
   const defaultSettings = [
     { key: 'kpi.debug.maxTracesPerConfig', value: '10',   description: 'Nombre max de traces debug conservees par config KPI (FIFO)' },

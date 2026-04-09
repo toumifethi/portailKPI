@@ -323,8 +323,8 @@ export class FormulaAstCalculator {
   ): Promise<FormulaEvalResult> {
     const where = this.buildWorklogWhere(context);
 
-    // Filtre implicite par auteur (pour temps_logue_auteur)
-    if (metric.implicitFilter?._filterByAuthor && context.jiraAccountIds) {
+    // Filtre par auteur du worklog (collaborateur évalué)
+    if (filters.filterWorklogsByAuthor && context.jiraAccountIds) {
       where.authorJiraAccountId = { in: context.jiraAccountIds };
     }
 
@@ -481,74 +481,51 @@ export class FormulaAstCalculator {
       where.jiraKey = { notIn: filters.excludeJiraKeys };
     }
 
+    // Filtres sur champs natifs de l'issue
+    if (filters.issueFieldFilters && filters.issueFieldFilters.length > 0) {
+      for (const ff of filters.issueFieldFilters) {
+        const field = ff.field;
+        switch (ff.operator) {
+          case 'is_null':
+            where[field] = null;
+            break;
+          case 'is_not_null':
+            where[field] = { not: null };
+            break;
+          case 'is_zero':
+            where[field] = { equals: 0 };
+            break;
+          case 'is_null_or_zero':
+            where.AND = [
+              ...(where.AND as Array<Record<string, unknown>> ?? []),
+              { OR: [{ [field]: null }, { [field]: { equals: 0 } }] },
+            ];
+            break;
+          case 'gt_zero':
+            where[field] = { gt: 0 };
+            break;
+          case 'gte':
+            where[field] = { gte: ff.value ?? 0 };
+            break;
+          case 'lte':
+            where[field] = { lte: ff.value ?? 0 };
+            break;
+          case 'equals':
+            where[field] = { equals: ff.value ?? 0 };
+            break;
+        }
+      }
+    }
+
     // Filtre collaborateur
     if (context.jiraAccountIds) {
       where.assigneeJiraAccountId = { in: context.jiraAccountIds };
     }
 
-    // Filtres implicites de la métrique
+    // Filtres implicites de la métrique (legacy — issueType uniquement)
     if (implicitFilter) {
       if (implicitFilter.issueType) {
         where.issueType = implicitFilter.issueType;
-      }
-      if (implicitFilter._noEstimate) {
-        where.OR = [
-          { originalEstimateHours: null },
-          { originalEstimateHours: { equals: 0 } },
-        ];
-      }
-
-      // Issue link filters for quality KPIs
-      // Convention: the "return" issue is the SOURCE of the link (e.g. "Bug attaché" points from return → dev)
-      if (implicitFilter._hasReturnLink) {
-        const returnLinkType = context.returnLinkType ?? 'est un retour de';
-        if (context.jiraAccountIds) {
-          // Attribution au développeur du ticket INITIAL (via le lien)
-          // Retour assigné au dev du ticket initial, OU fallback sur l'assignee du retour
-          delete where.assigneeJiraAccountId;
-          where.sourceLinks = {
-            some: {
-              linkType: { contains: returnLinkType },
-              targetIssue: { assigneeJiraAccountId: { in: context.jiraAccountIds } },
-            },
-          };
-          // Fallback: si pas de lien vers un ticket du collaborateur, inclure aussi
-          // les retours directement assignés au collaborateur
-          const existingOR = where.OR as unknown[] | undefined;
-          where.OR = [
-            ...(existingOR ?? []),
-            // Retour lié à un ticket initial du collaborateur
-            {
-              sourceLinks: {
-                some: {
-                  linkType: { contains: returnLinkType },
-                  targetIssue: { assigneeJiraAccountId: { in: context.jiraAccountIds } },
-                },
-              },
-            },
-            // Fallback: retour assigné directement au collaborateur (pas de lien exploitable)
-            {
-              assigneeJiraAccountId: { in: context.jiraAccountIds },
-              sourceLinks: {
-                some: {
-                  linkType: { contains: returnLinkType },
-                  targetIssue: { assigneeJiraAccountId: null },
-                },
-              },
-            },
-          ];
-          delete where.sourceLinks;
-        } else {
-          where.sourceLinks = { some: { linkType: { contains: returnLinkType } } };
-        }
-      }
-      if (implicitFilter._noReturnLink) {
-        const returnLinkType = context.returnLinkType ?? 'est un retour de';
-        where.targetLinks = { none: { linkType: { contains: returnLinkType } } };
-      }
-      if (implicitFilter._isDevTicket) {
-        const returnLinkType = context.returnLinkType ?? 'est un retour de';
-        where.sourceLinks = { none: { linkType: { contains: returnLinkType } } };
       }
     }
 
@@ -649,6 +626,55 @@ export class FormulaAstCalculator {
           Object.assign(where, wrapper);
         } else {
           where.AND = subConditions;
+        }
+        break;
+      }
+
+      case 'linked_to': {
+        // 1. Résoudre la population de base (ex: tickets livrés en prod)
+        const baseWhere: Record<string, unknown> = {
+          clientId: context.clientId,
+          projectId: { in: context.projectIds },
+        };
+        await this.applyScopeRule(baseWhere, rule.baseScope, context);
+        // Appliquer les filtres de la population de base (types d'issues, etc.)
+        if (rule.baseFilters?.issueTypes && rule.baseFilters.issueTypes.length > 0) {
+          baseWhere.issueType = { in: rule.baseFilters.issueTypes };
+        }
+        if (rule.baseFilters?.statuses && rule.baseFilters.statuses.length > 0) {
+          baseWhere.status = { in: rule.baseFilters.statuses };
+        }
+
+        // 2. Récupérer les jiraId de la population de base
+        const baseIssues = await prisma.issue.findMany({
+          where: baseWhere,
+          select: { id: true, jiraId: true },
+        });
+        const baseIssueIds = baseIssues.map((i) => i.id);
+
+        // 3. Trouver les issues liées via le type de lien
+        if (rule.direction === 'source') {
+          // L'issue recherchée est SOURCE du lien → lien pointe vers la population de base
+          const links = await prisma.issueLink.findMany({
+            where: {
+              linkType: { contains: rule.linkTypeContains },
+              targetIssueId: { in: baseIssueIds },
+            },
+            select: { sourceIssueId: true },
+            distinct: ['sourceIssueId'],
+          });
+          where.id = { in: links.map((l) => l.sourceIssueId) };
+        } else {
+          // L'issue recherchée est CIBLE du lien → lien vient de la population de base
+          const links = await prisma.issueLink.findMany({
+            where: {
+              linkType: { contains: rule.linkTypeContains },
+              sourceIssueId: { in: baseIssueIds },
+            },
+            select: { targetIssueId: true },
+            distinct: ['targetIssueId'],
+          });
+          where.id = { in: links.map((l) => l.targetIssueId) };
         }
         break;
       }

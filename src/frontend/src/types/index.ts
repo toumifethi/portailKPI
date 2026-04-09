@@ -456,6 +456,12 @@ export interface CustomFieldFilter {
   value?: string | string[];
 }
 
+export interface IssueFieldFilter {
+  field: 'originalEstimateHours' | 'storyPoints' | 'timeSpentSeconds' | 'remainingEstimateSeconds' | 'rollupTimeSpentHours' | 'rollupEstimateHours' | 'rollupRemainingHours';
+  operator: 'is_null' | 'is_not_null' | 'is_zero' | 'is_null_or_zero' | 'gt_zero' | 'gte' | 'lte' | 'equals';
+  value?: number;
+}
+
 export type ScopeRule =
   | { type: 'resolved_in_period' }
   | { type: 'updated_in_period' }
@@ -464,6 +470,7 @@ export type ScopeRule =
   | { type: 'sprint_in_period' }
   | { type: 'created_in_period' }
   | { type: 'combined'; rules: ScopeRule[]; logic: 'AND' | 'OR' }
+  | { type: 'linked_to'; baseScope: ScopeRule; baseFilters?: FormulaFilters; linkTypeContains: string; direction: 'source' | 'target' }
   ;
 
 export interface FormulaFilters {
@@ -475,6 +482,8 @@ export interface FormulaFilters {
   excludeJiraKeys?: string[];
   customFieldFilters?: CustomFieldFilter[];
   customFieldLogic?: 'AND' | 'OR';
+  issueFieldFilters?: IssueFieldFilter[];
+  filterWorklogsByAuthor?: boolean;
 }
 
 export interface FormulaAst {

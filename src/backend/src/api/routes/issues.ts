@@ -224,4 +224,35 @@ router.get('/statuses', requireAuth, async (req: AuthenticatedRequest, res, next
   }
 });
 
+/**
+ * GET /api/issues/link-types?clientId=X
+ * Retourne les types de liens distincts pour un client donné.
+ */
+router.get('/link-types', requireAuth, async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const clientId = req.query.clientId ? Number(req.query.clientId) : undefined;
+    const where: Record<string, unknown> = {};
+    if (clientId) {
+      where.sourceIssue = { clientId };
+    } else {
+      const scope = await resolveUserScope(req);
+      if (scope.clientIds !== null) {
+        if (scope.clientIds.length === 0) return res.json([]);
+        where.sourceIssue = { clientId: { in: scope.clientIds } };
+      }
+    }
+
+    const rows = await prisma.issueLink.findMany({
+      where,
+      select: { linkType: true },
+      distinct: ['linkType'],
+      orderBy: { linkType: 'asc' },
+    });
+
+    res.json(rows.map((r) => r.linkType));
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

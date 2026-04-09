@@ -81,33 +81,6 @@ export const METRICS_CATALOG: MetricDefinition[] = [
     field: null,
     valueType: 'count',
   },
-  {
-    id: 'nb_bugs',
-    label: 'Nombre de bugs',
-    description: 'Compte les issues de type Bug',
-    source: 'issues',
-    field: null,
-    implicitFilter: { issueType: 'Bug' },
-    valueType: 'count',
-  },
-  {
-    id: 'nb_stories',
-    label: 'Nombre de stories',
-    description: 'Compte les issues de type Story',
-    source: 'issues',
-    field: null,
-    implicitFilter: { issueType: 'Story' },
-    valueType: 'count',
-  },
-  {
-    id: 'nb_sans_estimation',
-    label: 'Issues sans estimation',
-    description: 'Compte les issues dont originalEstimateHours est null ou 0',
-    source: 'issues',
-    field: null,
-    implicitFilter: { _noEstimate: true },
-    valueType: 'count',
-  },
 
   // ── Story points ──
   {
@@ -130,16 +103,6 @@ export const METRICS_CATALOG: MetricDefinition[] = [
     valueType: 'duration',
   },
   {
-    id: 'temps_logue_auteur',
-    label: 'Temps logué par le collaborateur (h)',
-    description: 'Somme du temps des worklogs uniquement pour le collaborateur évalué. Fiable pour les KPI individuels car exclut les worklogs des autres personnes.',
-    source: 'worklogs',
-    field: 'timeSpentSeconds',
-    transform: 'secondsToHours',
-    implicitFilter: { _filterByAuthor: true },
-    valueType: 'duration',
-  },
-  {
     id: 'nb_worklogs',
     label: 'Nombre de worklogs',
     description: 'Compte le nombre de worklogs',
@@ -148,43 +111,6 @@ export const METRICS_CATALOG: MetricDefinition[] = [
     valueType: 'count',
   },
 
-  // ── Qualité (liens issues) ──
-  {
-    id: 'nb_retours',
-    label: 'Nombre de retours',
-    description: 'Compte les issues qui sont des retours (liées via issue link de type retour)',
-    source: 'issues',
-    field: null,
-    implicitFilter: { _hasReturnLink: true },
-    valueType: 'count',
-  },
-  {
-    id: 'nb_tickets_dev',
-    label: 'Nombre de tickets dev',
-    description: 'Compte les issues de développement (hors retours)',
-    source: 'issues',
-    field: null,
-    implicitFilter: { _isDevTicket: true },
-    valueType: 'count',
-  },
-  {
-    id: 'nb_tickets_sans_retour',
-    label: 'Tickets sans retour',
-    description: 'Compte les issues de développement qui n\'ont aucun retour lié',
-    source: 'issues',
-    field: null,
-    implicitFilter: { _noReturnLink: true },
-    valueType: 'count',
-  },
-  {
-    id: 'consomme_retours',
-    label: 'Temps consommé retours (h)',
-    description: 'Temps passé sur les issues de retour uniquement',
-    source: 'issues',
-    field: 'rollupTimeSpentHours',
-    implicitFilter: { _hasReturnLink: true },
-    valueType: 'duration',
-  },
 ];
 
 /** Retrouve une métrique par son ID */

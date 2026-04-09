@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { clientsApi, settingsApi, transitionsApi } from '@/api/endpoints';
-import type { JiraConnection, ScopeRule } from '@/types';
+import { clientsApi, settingsApi, transitionsApi, issuesApi } from '@/api/endpoints';
+import type { JiraConnection, ScopeRule, FormulaFilters } from '@/types';
 
 const SCOPE_TYPES = [
   {
@@ -41,10 +41,16 @@ const SCOPE_TYPES = [
     icon: '🔄',
   },
   {
+    type: 'linked_to' as const,
+    label: 'Liees a une population',
+    description: 'Issues liees (via issue links JIRA) a une population de reference. Ex: retours lies aux tickets livres en production.',
+    icon: '🔗',
+  },
+  {
     type: 'combined' as const,
     label: 'Combinaison (ET / OU)',
     description: 'Combine plusieurs regles avec une logique ET (toutes les conditions) ou OU (au moins une condition). Permet des perimetres complexes.',
-    icon: '🔗',
+    icon: '🧩',
   },
 ];
 
@@ -163,6 +169,15 @@ export function ScopeRuleEditor({ value, onChange, clientId, globalJiraContext }
             : STATUS_SLIDING_WINDOW_DEFAULT_MONTHS,
         });
         break;
+      case 'linked_to':
+        onChange({
+          type: 'linked_to',
+          baseScope: { type: 'status_in_period', statuses: getDefaultStatuses(availableStatusTargets), slidingWindowMonths: 1 },
+          baseFilters: { issueTypes: [] },
+          linkTypeContains: 'est un retour de',
+          direction: 'source',
+        });
+        break;
       case 'combined':
         onChange({
           type: 'combined',
@@ -232,6 +247,15 @@ export function ScopeRuleEditor({ value, onChange, clientId, globalJiraContext }
                   statuses,
                   slidingWindowMonths: normalizeSlidingWindowMonths(value.slidingWindowMonths),
                 })}
+              />
+            )}
+
+            {/* Sous-options pour linked_to */}
+            {isSelected && scope.type === 'linked_to' && value?.type === 'linked_to' && (
+              <LinkedToEditor
+                value={value}
+                onChange={onChange}
+                clientId={clientId}
               />
             )}
 
@@ -443,6 +467,185 @@ const SIMPLE_RULES: Array<{ type: ScopeRule['type']; label: string }> = [
   { type: 'created_in_period', label: 'Creees' },
   { type: 'sprint_in_period', label: 'Dans un sprint' },
 ];
+
+const LINKED_TO_BASE_SCOPES: Array<{ type: ScopeRule['type']; label: string }> = [
+  { type: 'resolved_in_period', label: 'Resolues dans la periode' },
+  { type: 'updated_in_period', label: 'Mises a jour dans la periode' },
+  { type: 'worklogs_in_period', label: 'Avec worklogs dans la periode' },
+  { type: 'created_in_period', label: 'Creees dans la periode' },
+  { type: 'sprint_in_period', label: 'Dans un sprint de la periode' },
+  { type: 'status_in_period', label: 'Transitionees vers un statut cible' },
+];
+
+function LinkedToEditor({
+  value,
+  onChange,
+  clientId,
+}: {
+  value: Extract<ScopeRule, { type: 'linked_to' }>;
+  onChange: (rule: ScopeRule) => void;
+  clientId?: number;
+}) {
+  const { data: issueTypes } = useQuery({
+    queryKey: ['issueTypes'],
+    queryFn: issuesApi.listTypes,
+    staleTime: 60_000,
+  });
+
+  const { data: linkTypes = [] } = useQuery({
+    queryKey: ['link-types', clientId],
+    queryFn: () => issuesApi.listLinkTypes(clientId),
+    staleTime: 60_000,
+  });
+
+  const [customLinkType, setCustomLinkType] = useState(false);
+
+  const baseIssueTypes = new Set(value.baseFilters?.issueTypes ?? []);
+
+  function toggleBaseIssueType(type: string) {
+    const next = new Set(baseIssueTypes);
+    if (next.has(type)) next.delete(type); else next.add(type);
+    onChange({ ...value, baseFilters: { ...value.baseFilters, issueTypes: [...next] } });
+  }
+
+  function updateBaseScope(type: string) {
+    if (type === 'status_in_period') {
+      onChange({
+        ...value,
+        baseScope: { type: 'status_in_period', statuses: ['Done', 'Closed', 'Resolved'], slidingWindowMonths: 1 },
+      });
+    } else {
+      onChange({ ...value, baseScope: { type } as ScopeRule });
+    }
+  }
+
+  const selectStyle: React.CSSProperties = { padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 12, background: 'white' };
+  const inputStyle: React.CSSProperties = { padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 12, width: '100%', boxSizing: 'border-box' as const };
+  const labelStyle: React.CSSProperties = { display: 'block', fontSize: 11, color: '#6b7280', marginBottom: 3, fontWeight: 600 };
+
+  return (
+    <div style={{ marginLeft: 36, marginTop: 6, padding: 12, background: '#f9fafb', borderRadius: 6, border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {/* Population de référence */}
+      <div style={{ padding: 10, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>Population de reference</div>
+
+        <div style={{ marginBottom: 8 }}>
+          <label style={labelStyle}>Scope</label>
+          <select value={value.baseScope.type} onChange={(e) => updateBaseScope(e.target.value)} style={{ ...selectStyle, width: '100%' }}>
+            {LINKED_TO_BASE_SCOPES.map((s) => (
+              <option key={s.type} value={s.type}>{s.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Statuts cibles si status_in_period */}
+        {value.baseScope.type === 'status_in_period' && (
+          <div style={{ marginBottom: 8 }}>
+            <label style={labelStyle}>Statuts cibles</label>
+            <input
+              value={(value.baseScope as Extract<ScopeRule, { type: 'status_in_period' }>).statuses.join(', ')}
+              onChange={(e) => onChange({
+                ...value,
+                baseScope: {
+                  type: 'status_in_period',
+                  statuses: e.target.value.split(',').map((s) => s.trim()).filter(Boolean),
+                  slidingWindowMonths: (value.baseScope as Extract<ScopeRule, { type: 'status_in_period' }>).slidingWindowMonths,
+                },
+              })}
+              placeholder="Done, LIVRE EN PRODUCTION"
+              style={inputStyle}
+            />
+          </div>
+        )}
+
+        <div>
+          <label style={labelStyle}>Types d'issues de la population {baseIssueTypes.size === 0 && <span style={{ color: '#9ca3af', fontWeight: 400 }}>(tous)</span>}</label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {(issueTypes ?? ['Epic', 'Story', 'Bug', 'Task', 'Sub-task']).map((type) => (
+              <label key={type} style={{
+                display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, cursor: 'pointer',
+                padding: '2px 7px', borderRadius: 4,
+                background: baseIssueTypes.has(type) ? '#dbeafe' : '#f3f4f6',
+                color: baseIssueTypes.has(type) ? '#1d4ed8' : '#374151',
+                border: baseIssueTypes.has(type) ? '1px solid #93c5fd' : '1px solid #e5e7eb',
+              }}>
+                <input type="checkbox" checked={baseIssueTypes.has(type)} onChange={() => toggleBaseIssueType(type)}
+                  style={{ accentColor: '#4f46e5', width: 11, height: 11 }} />
+                {type}
+              </label>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Configuration du lien */}
+      <div>
+        <label style={labelStyle}>Type de lien</label>
+        {!customLinkType && linkTypes.length > 0 ? (
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <select
+              value={linkTypes.includes(value.linkTypeContains) ? value.linkTypeContains : ''}
+              onChange={(e) => onChange({ ...value, linkTypeContains: e.target.value })}
+              style={{ ...selectStyle, flex: 1 }}
+            >
+              <option value="" disabled>-- Selectionner un type de lien --</option>
+              {linkTypes.map((lt) => (
+                <option key={lt} value={lt}>{lt}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => setCustomLinkType(true)}
+              title="Saisie libre"
+              style={{ padding: '3px 8px', fontSize: 11, border: '1px solid #d1d5db', borderRadius: 4, background: 'white', color: '#6b7280', cursor: 'pointer' }}
+            >
+              ✏️
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input
+              value={value.linkTypeContains}
+              onChange={(e) => onChange({ ...value, linkTypeContains: e.target.value })}
+              placeholder="ex: est un retour de"
+              style={{ ...inputStyle, flex: 1 }}
+            />
+            {linkTypes.length > 0 && (
+              <button
+                onClick={() => setCustomLinkType(false)}
+                title="Revenir a la liste"
+                style={{ padding: '3px 8px', fontSize: 11, border: '1px solid #d1d5db', borderRadius: 4, background: 'white', color: '#6b7280', cursor: 'pointer' }}
+              >
+                📋
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <label style={labelStyle}>L'issue recherchee est</label>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {([
+            { id: 'source' as const, label: 'Source du lien (ex: le retour pointe vers le ticket principal)' },
+            { id: 'target' as const, label: 'Cible du lien (ex: le ticket principal est pointe par le retour)' },
+          ]).map((d) => (
+            <label key={d.id} style={{
+              display: 'flex', alignItems: 'flex-start', gap: 5, fontSize: 11, cursor: 'pointer',
+              padding: '6px 10px', borderRadius: 5, flex: 1,
+              background: value.direction === d.id ? '#eef2ff' : '#fff',
+              border: value.direction === d.id ? '2px solid #4f46e5' : '1px solid #e5e7eb',
+            }}>
+              <input type="radio" checked={value.direction === d.id}
+                onChange={() => onChange({ ...value, direction: d.id })}
+                style={{ accentColor: '#4f46e5', marginTop: 1 }} />
+              <span style={{ color: value.direction === d.id ? '#4f46e5' : '#374151' }}>{d.label}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function CombinedRuleEditor({
   rules,

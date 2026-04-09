@@ -59,6 +59,13 @@ export interface CustomFieldFilter {
   value?: string | string[];
 }
 
+/** Filtre sur un champ natif de l'issue (estimation, story points, etc.) */
+export interface IssueFieldFilter {
+  field: 'originalEstimateHours' | 'storyPoints' | 'timeSpentSeconds' | 'remainingEstimateSeconds' | 'rollupTimeSpentHours' | 'rollupEstimateHours' | 'rollupRemainingHours';
+  operator: 'is_null' | 'is_not_null' | 'is_zero' | 'is_null_or_zero' | 'gt_zero' | 'gte' | 'lte' | 'equals';
+  value?: number;
+}
+
 // ── Règle de sélection des issues pour la période ──
 
 export type ScopeRule =
@@ -69,6 +76,7 @@ export type ScopeRule =
   | { type: 'sprint_in_period' }
   | { type: 'created_in_period' }
   | { type: 'combined'; rules: ScopeRule[]; logic: 'AND' | 'OR' }
+  | { type: 'linked_to'; baseScope: ScopeRule; baseFilters?: FormulaFilters; linkTypeContains: string; direction: 'source' | 'target' }
   ;
 
 export interface FormulaFilters {
@@ -88,6 +96,10 @@ export interface FormulaFilters {
   customFieldFilters?: CustomFieldFilter[];
   /** Logique entre les filtres custom : AND (tous) ou OR (au moins un) */
   customFieldLogic?: 'AND' | 'OR';
+  /** Filtres sur champs natifs de l'issue */
+  issueFieldFilters?: IssueFieldFilter[];
+  /** Filtrer les worklogs par le collaborateur évalué (auteur du worklog) */
+  filterWorklogsByAuthor?: boolean;
 }
 
 // ── Formule complète (stockée en JSON) ──
