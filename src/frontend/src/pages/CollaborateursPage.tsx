@@ -42,7 +42,7 @@ export default function CollaborateursPage() {
 
   const { data: clients } = useQuery({
     queryKey: ['clients'],
-    queryFn: clientsApi.list,
+    queryFn: () => clientsApi.list(),
   });
 
   // KPIs formels (stockés en base)

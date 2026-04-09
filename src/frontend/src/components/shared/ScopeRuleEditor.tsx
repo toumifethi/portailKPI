@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { clientsApi, settingsApi, transitionsApi, issuesApi } from '@/api/endpoints';
-import type { JiraConnection, ScopeRule, FormulaFilters } from '@/types';
+import type { JiraConnection, ScopeRule } from '@/types';
 
 const SCOPE_TYPES = [
   {
@@ -488,7 +488,7 @@ function LinkedToEditor({
 }) {
   const { data: issueTypes } = useQuery({
     queryKey: ['issueTypes'],
-    queryFn: issuesApi.listTypes,
+    queryFn: () => issuesApi.listTypes(),
     staleTime: 60_000,
   });
 

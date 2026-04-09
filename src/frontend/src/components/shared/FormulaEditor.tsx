@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { clientsApi, jiraConnectionsApi, kpiApi, issuesApi } from '@/api/endpoints';
-import type { FormulaNode, FormulaFilters, FormulaAst, FormulaFunction, MetricInfo, CustomFieldFilter, JiraCustomFieldInfo, ScopeRule, IssueFieldFilter } from '@/types';
+import type { FormulaNode, FormulaFilters, FormulaAst, FormulaFunction, MetricInfo, CustomFieldFilter, JiraCustomFieldInfo, IssueFieldFilter, JiraConnection } from '@/types';
 import { ScopeRuleEditor } from './ScopeRuleEditor';
 import { astToSql } from '@/utils/astToSql';
 import { highlightSql } from './SqlHighlightEditor';
@@ -36,12 +37,12 @@ const DEFAULT_NODE: FormulaNode = { type: 'metric', id: 'consomme' };
 
 export function FormulaEditor({ value, onChange, clientId, period, section }: FormulaEditorProps) {
   const [expression, setExpression] = useState<FormulaNode>(value?.expression ?? DEFAULT_NODE);
-  const [filters, setFilters] = useState<FormulaFilters>(value?.filters ?? DEFAULT_FILTERS);
+  const [filters] = useState<FormulaFilters>(value?.filters ?? DEFAULT_FILTERS);
   const [globalJiraConnectionId, setGlobalJiraConnectionId] = useState<number | undefined>(undefined);
 
   const { data: jiraConnections } = useQuery({
     queryKey: ['jira-connections'],
-    queryFn: jiraConnectionsApi.list,
+    queryFn: () => jiraConnectionsApi.list(),
     enabled: !clientId,
     staleTime: 60_000,
   });
@@ -81,7 +82,6 @@ export function FormulaEditor({ value, onChange, clientId, period, section }: Fo
     onChange({ version: 1, expression, filters });
   }, [expression, filters]);
 
-  const [activeTab, setActiveTab] = useState<'formule'>('formule');
   const [showSqlPreview, setShowSqlPreview] = useState(false);
 
   const globalJiraContext = !clientId
@@ -154,10 +154,10 @@ export function FormulaEditor({ value, onChange, clientId, period, section }: Fo
           <span style={{ marginLeft: 12, color: '#6b7280' }}>
             ({testMutation.data.result.ticketCount} tickets, {testMutation.data.result.excludedTicketCount} exclus)
           </span>
-          {testMutation.data.debug && (
+          {testMutation.data.result.debug && (
             <div style={{ marginTop: 6, fontSize: 11, color: '#6b7280' }}>
-              {Object.entries(testMutation.data.debug).map(([k, v]) => (
-                <span key={k} style={{ marginRight: 12 }}>{k}: <strong>{v !== null ? Math.round(v * 100) / 100 : 'null'}</strong></span>
+              {Object.entries(testMutation.data.result.debug).map(([k, v]) => (
+                <span key={k} style={{ marginRight: 12 }}>{k}: <strong>{v != null ? Math.round(v * 100) / 100 : 'null'}</strong></span>
               ))}
             </div>
           )}
@@ -187,7 +187,7 @@ function FilterCheckboxes({
   onChange: (f: FormulaFilters) => void;
   clientId?: number;
   globalJiraContext?: {
-    jiraConnections: Array<{ id: number; name: string; jiraUrl: string }>;
+    jiraConnections: JiraConnection[];
     selectedConnectionId?: number;
     onConnectionChange: (jiraConnectionId: number | undefined) => void;
   };
@@ -209,7 +209,7 @@ function FilterCheckboxes({
 
   const { data: issueTypes } = useQuery({
     queryKey: ['issueTypes'],
-    queryFn: issuesApi.listTypes,
+    queryFn: () => issuesApi.listTypes(),
     staleTime: 60_000,
   });
 
@@ -734,7 +734,7 @@ function NodeEditor({
   depth: number;
   clientId?: number;
   globalJiraContext?: {
-    jiraConnections: Array<{ id: number; name: string; jiraUrl: string }>;
+    jiraConnections: JiraConnection[];
     selectedConnectionId?: number;
     onConnectionChange: (jiraConnectionId: number | undefined) => void;
   };
@@ -968,7 +968,6 @@ function getCurrentPeriod(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
-const sectionLabel: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 4 };
 const miniLabel: React.CSSProperties = { display: 'block', fontSize: 11, color: '#6b7280', marginBottom: 2 };
 const inputStyle: React.CSSProperties = { width: '100%', padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 11, boxSizing: 'border-box' as const };
 const selectStyle: React.CSSProperties = { padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 11, background: 'white' };

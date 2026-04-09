@@ -48,7 +48,7 @@ function IssueTypeFilter({
 
   const { data: allTypes } = useQuery({
     queryKey: ['issueTypes'],
-    queryFn: issuesApi.listTypes,
+    queryFn: () => issuesApi.listTypes(),
     staleTime: 60_000,
   });
 
@@ -167,7 +167,7 @@ export default function IssuesPage() {
   const [periodEnd, setPeriodEnd] = useState('');
   const [page, setPage] = useState(1);
 
-  const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list });
+  const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: () => clientsApi.list() });
   const { data: jiraUsers } = useQuery({ queryKey: ['jira-users-all'], queryFn: () => jiraUsersApi.list() });
 
   const params = {

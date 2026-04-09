@@ -608,7 +608,11 @@ function HeatmapSection({
 
   if (!configs.length) return null;
 
-  const thresholds = heatmap?.thresholds ?? {};
+  const thresholds = heatmap?.thresholds ?? {
+    thresholdRedMin: null, thresholdRedMax: null,
+    thresholdOrangeMin: null, thresholdOrangeMax: null,
+    thresholdGreenMin: null, thresholdGreenMax: null,
+  };
 
   const thStyle: React.CSSProperties = {
     textAlign: 'center',
@@ -938,9 +942,7 @@ function EvolutionMultiCurves({
 // ---------------------------------------------------------------------------
 
 function MyKpisSection({ period }: { period: string }) {
-  const { data: myKpis, isLoading } = useQuery<
-    Array<{ clientId: number; clientName: string; kpis: DashboardKpi[] }>
-  >({
+  const { data: myKpis, isLoading } = useQuery({
     queryKey: ['dashboard-my-kpis', period],
     queryFn: () => dashboardApi.getMyKpis(period),
     enabled: !!period,
@@ -966,7 +968,7 @@ function MyKpisSection({ period }: { period: string }) {
             }}
           >
             {group.kpis.map((kpi) => (
-              <KpiCard key={kpi.kpiId} kpi={kpi} />
+              <KpiCard key={kpi.kpiName} kpi={kpi} />
             ))}
           </div>
         </div>

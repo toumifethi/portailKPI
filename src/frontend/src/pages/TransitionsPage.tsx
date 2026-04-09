@@ -16,9 +16,9 @@ export default function TransitionsPage() {
   const [periodEnd, setPeriodEnd] = useState('');
   const [page, setPage] = useState(1);
 
-  const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list });
+  const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: () => clientsApi.list() });
   const { data: jiraUsers } = useQuery({ queryKey: ['jira-users-all'], queryFn: () => jiraUsersApi.list() });
-  const { data: issueTypes } = useQuery({ queryKey: ['issueTypes'], queryFn: issuesApi.listTypes, staleTime: 60_000 });
+  const { data: issueTypes } = useQuery({ queryKey: ['issueTypes'], queryFn: () => issuesApi.listTypes(), staleTime: 60_000 });
 
   const cid = clientId ? Number(clientId) : undefined;
   const { data: statusData } = useQuery({

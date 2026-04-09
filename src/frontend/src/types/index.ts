@@ -379,6 +379,7 @@ export interface IssueRow {
   rollupEstimateHours: number | null;
   rollupTimeSpentSeconds: number | null;
   rollupTimeSpentHours: number | null;
+  rollupRemainingHours: number | null;
   storyPoints: number | null;
   jiraCreatedAt: string;
   jiraUpdatedAt: string;

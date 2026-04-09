@@ -765,7 +765,7 @@ function KpiCalcTab({ clients }: { clients: Client[] }) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: { cronExpression?: string; isActive?: boolean; periodMode?: string } }) =>
+    mutationFn: ({ id, data }: { id: number; data: { cronExpression?: string; isActive?: boolean; periodMode?: string; allClients?: boolean; kpiDefinitionId?: number } }) =>
       kpiCalcSchedulesApi.update(id, data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['kpi-calc-schedules'] }); setEditingSchedule(null); },
   });
@@ -882,7 +882,7 @@ export default function SchedulingPage() {
 
   const { data: clients = [] } = useQuery({
     queryKey: ['clients'],
-    queryFn: clientsApi.list,
+    queryFn: () => clientsApi.list(),
   });
 
   const tabs = [

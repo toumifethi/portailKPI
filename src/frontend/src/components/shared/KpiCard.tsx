@@ -1,10 +1,23 @@
-import React from 'react';
-import type { DashboardKpi, RagStatus } from '@/types';
+import type { RagStatus } from '@/types';
 import { getRagStatus } from '@/types';
 import { RagBadge } from './RagBadge';
 
+interface KpiCardKpi {
+  kpiName: string;
+  unit: string | null;
+  value: number | null;
+  ticketCount: number | null;
+  excludedTicketCount?: number | null;
+  thresholdRedMin: number | null;
+  thresholdRedMax: number | null;
+  thresholdOrangeMin: number | null;
+  thresholdOrangeMax: number | null;
+  thresholdGreenMin: number | null;
+  thresholdGreenMax: number | null;
+}
+
 interface KpiCardProps {
-  kpi: DashboardKpi;
+  kpi: KpiCardKpi;
   onClick?: () => void;
 }
 
@@ -43,7 +56,7 @@ export function KpiCard({ kpi, onClick }: KpiCardProps) {
 
       <div style={{ marginTop: 6, fontSize: 12, color: '#9ca3af' }}>
         {kpi.ticketCount !== null && `${kpi.ticketCount} tickets`}
-        {kpi.excludedTicketCount ? ` (${kpi.excludedTicketCount} exclus)` : ''}
+        {kpi.excludedTicketCount != null && kpi.excludedTicketCount > 0 ? ` (${kpi.excludedTicketCount} exclus)` : ''}
       </div>
     </div>
   );

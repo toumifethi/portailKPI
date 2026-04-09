@@ -348,7 +348,7 @@ export function ClientKpiSection({ clientId }: ClientKpiSectionProps) {
                     ? 'Formule personnalisee'
                     : 'Personnaliser la formule'}
                 </button>
-                {((config as unknown as { formulaAstOverride: unknown }).formulaAstOverride
+                {!!((config as unknown as { formulaAstOverride: unknown }).formulaAstOverride
                   || (config.configOverride as Record<string, unknown>)?.sql) && (
                   <button
                     onClick={() => {

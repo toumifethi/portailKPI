@@ -1,4 +1,3 @@
-import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAppStore } from '@/store/appStore';
 import { clientsApi } from '@/api/endpoints';
@@ -18,7 +17,7 @@ function useAuthInfo() {
     return { displayName: null, logout: () => {} };
   }
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { useMsal } = require('@azure/msal-react');
+  const { useMsal } = require('@azure/msal-react') as { useMsal: () => { accounts: Array<{ name?: string; username?: string }>; instance: { logoutRedirect: () => void } } };
   const { accounts, instance } = useMsal();
   return {
     displayName: accounts[0]?.name ?? accounts[0]?.username ?? '',

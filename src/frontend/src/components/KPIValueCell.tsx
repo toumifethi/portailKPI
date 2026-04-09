@@ -1,4 +1,3 @@
-import React from 'react';
 import { getRagColorInfo, type RagThresholds } from '@/utils/ragColors';
 
 interface KPIValueCellProps {

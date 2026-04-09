@@ -116,7 +116,7 @@ export default function CollaboratorsPage() {
 
 function CollabModal({ collaborator, profiles, onClose, onSaved }: {
   collaborator?: Collaborator;
-  profiles: Array<{ id: number; code: string; label: string }>;
+  profiles: Array<{ id: number; code: string; label: string; isActive?: boolean }>;
   onClose: () => void;
   onSaved: () => void;
 }) {

@@ -18,7 +18,7 @@ export default function WorklogsPage() {
   const [periodEnd, setPeriodEnd] = useState('');
   const [page, setPage] = useState(1);
 
-  const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list });
+  const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: () => clientsApi.list() });
   const { data: jiraUsers } = useQuery({ queryKey: ['jira-users-all'], queryFn: () => jiraUsersApi.list() });
 
   const params = {

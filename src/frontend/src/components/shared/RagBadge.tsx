@@ -1,4 +1,3 @@
-import React from 'react';
 import type { RagStatus } from '@/types';
 
 const RAG_CONFIG: Record<RagStatus, { label: string; color: string; bg: string }> = {

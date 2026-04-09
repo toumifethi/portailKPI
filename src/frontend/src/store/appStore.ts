@@ -57,12 +57,12 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'portail-kpi-app',
-      partialState: (state: AppState) => ({
+      partialize: (state) => ({
         currentUser: state.currentUser,
         selectedClientId: state.selectedClientId,
         selectedPeriod: state.selectedPeriod,
         sidebarCollapsed: state.sidebarCollapsed,
       }),
-    } as Parameters<typeof persist>[1],
+    },
   ),
 );

@@ -88,13 +88,13 @@ export const dashboardApi = {
 
 export const jiraConnectionsApi = {
   list: () => apiClient.get<JiraConnection[]>('/jira-connections').then((r) => r.data),
-  create: (data: { name: string; jiraUrl: string; jiraEmail: string; jiraApiToken: string; tempoApiToken?: string; fieldMapping?: { storyPoints?: string; sprints?: string } }) =>
+  create: (data: { name: string; jiraUrl: string; jiraEmail: string; jiraApiToken: string; tempoApiToken?: string; fieldMapping?: { storyPoints?: string; sprints?: string; returnLinkType?: string } }) =>
     apiClient.post<JiraConnection>('/jira-connections', data).then((r) => r.data),
   test: (data: { jiraUrl: string; jiraEmail: string; jiraApiToken: string }) =>
     apiClient.post<{ ok: boolean; error?: string; user?: string }>('/jira-connections/test', data).then((r) => r.data),
   testExisting: (id: number) =>
     apiClient.get<{ ok: boolean; error?: string; user?: string }>(`/jira-connections/${id}/test`).then((r) => r.data),
-  update: (id: number, data: { name: string; jiraUrl: string; jiraEmail: string; jiraApiToken?: string; tempoApiToken?: string; fieldMapping?: { storyPoints?: string; sprints?: string } }) =>
+  update: (id: number, data: { name: string; jiraUrl: string; jiraEmail: string; jiraApiToken?: string; tempoApiToken?: string; fieldMapping?: { storyPoints?: string; sprints?: string; returnLinkType?: string } }) =>
     apiClient.patch<JiraConnection>(`/jira-connections/${id}`, data).then((r) => r.data),
   remove: (id: number) =>
     apiClient.delete(`/jira-connections/${id}`).then((r) => r.data),

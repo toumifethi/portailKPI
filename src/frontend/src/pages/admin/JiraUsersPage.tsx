@@ -7,7 +7,7 @@ export default function JiraUsersPage() {
   const [clientFilter, setClientFilter] = useState<string>('');
   const [linkFilter, setLinkFilter] = useState<'all' | 'linked' | 'unlinked'>('all');
 
-  const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list });
+  const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: () => clientsApi.list() });
   const { data: jiraUsers, isLoading } = useQuery({
     queryKey: ['jira-users', clientFilter],
     queryFn: () => jiraUsersApi.list(clientFilter ? Number(clientFilter) : undefined),

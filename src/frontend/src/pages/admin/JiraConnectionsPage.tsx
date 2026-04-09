@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { importsApi, jiraConnectionsApi } from '@/api/endpoints';
-import type { JiraConnection, JiraUsersSyncResult } from '@/types';
+import type { JiraConnection } from '@/types';
 
 // ─── Composant select pour champs JIRA ──────────────────────────────────────
 
@@ -396,7 +396,7 @@ function CreateModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function SyncJiraConnectionUsersModal({
+export function SyncJiraConnectionUsersModal({
   jiraConnectionId,
   connectionName,
   onClose,
