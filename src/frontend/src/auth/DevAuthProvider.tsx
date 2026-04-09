@@ -26,6 +26,11 @@ export function DevAuthProvider({ children }: { children: React.ReactNode }) {
   const { currentUser, setCurrentUser } = useAppStore();
   const [users, setUsers] = useState<DevUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [password, setPassword] = useState('');
+  const [authenticated, setAuthenticated] = useState(false);
+  const [passwordError, setPasswordError] = useState(false);
+
+  const devPassword = import.meta.env.VITE_DEV_PASSWORD || '';
 
   useEffect(() => {
     apiClient.get<DevUser[]>('/auth/dev-users')
@@ -48,6 +53,16 @@ export function DevAuthProvider({ children }: { children: React.ReactNode }) {
     setCurrentUser(null);
   }
 
+  function handlePasswordSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (password === devPassword) {
+      setAuthenticated(true);
+      setPasswordError(false);
+    } else {
+      setPasswordError(true);
+    }
+  }
+
   // Si un utilisateur est deja selectionne, afficher l'app
   if (currentUser) {
     return (
@@ -57,14 +72,45 @@ export function DevAuthProvider({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Sinon afficher l'ecran de selection
+  // Ecran mot de passe (si VITE_DEV_PASSWORD est configure)
+  if (devPassword && !authenticated) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <form onSubmit={handlePasswordSubmit} style={{ width: 360, maxWidth: '95vw', textAlign: 'center' }}>
+          <div style={{ fontSize: 40, marginBottom: 8 }}>🔒</div>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111827', margin: '0 0 8px' }}>Portail KPI</h1>
+          <p style={{ fontSize: 14, color: '#6b7280', marginBottom: 24 }}>Acces protege — entrez le mot de passe</p>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => { setPassword(e.target.value); setPasswordError(false); }}
+            placeholder="Mot de passe"
+            autoFocus
+            style={{
+              width: '100%', padding: '10px 14px', fontSize: 15, border: passwordError ? '2px solid #ef4444' : '1px solid #d1d5db',
+              borderRadius: 8, boxSizing: 'border-box', marginBottom: 12,
+            }}
+          />
+          {passwordError && <p style={{ color: '#ef4444', fontSize: 13, margin: '0 0 12px' }}>Mot de passe incorrect</p>}
+          <button type="submit" style={{
+            width: '100%', padding: '10px 16px', fontSize: 15, fontWeight: 600,
+            background: '#4f46e5', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer',
+          }}>
+            Entrer
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  // Ecran de selection de profil
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ width: 520, maxWidth: '95vw' }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{ fontSize: 40, marginBottom: 8 }}>🎯</div>
           <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111827', margin: 0 }}>Portail KPI</h1>
-          <p style={{ fontSize: 14, color: '#6b7280', marginTop: 4 }}>Mode developpement — choisissez un profil</p>
+          <p style={{ fontSize: 14, color: '#6b7280', marginTop: 4 }}>Choisissez un profil</p>
         </div>
 
         {loading && <div style={{ textAlign: 'center', color: '#6b7280' }}>Chargement...</div>}
