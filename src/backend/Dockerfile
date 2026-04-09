@@ -15,6 +15,8 @@ RUN npm run build
 # --- production image ---
 FROM node:20-alpine AS production
 
+RUN apk add --no-cache openssl
+
 WORKDIR /app
 
 ENV NODE_ENV=production
